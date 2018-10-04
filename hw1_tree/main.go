@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 /*
@@ -21,7 +22,9 @@ func main() {
 		panic("usage go run main.go . [-f]")
 	}
 	path := os.Args[1]
+	//path:= `E:\gopath\src\github.com\coursera\hw1_tree\testdata`
 	printFiles := len(os.Args) == 3 && os.Args[2] == "-f"
+	//printFiles := false
 	err := dirTree(out, path, printFiles)
 	if err != nil {
 		panic(err.Error())
@@ -29,6 +32,11 @@ func main() {
 }
 
 func dirTree(out io.Writer, path string, printFiles bool) error {
+	return walker(out, path, printFiles, 0)
+}
+
+func walker(out io.Writer, path string, printFiles bool, prefixCount int) error {
+	prefix := strings.Repeat("│\t", prefixCount)
 	list, err := ioutil.ReadDir(path)
 
 	if err != nil {
@@ -37,10 +45,10 @@ func dirTree(out io.Writer, path string, printFiles bool) error {
 
 	for _, v := range list {
 		if v.IsDir() {
-			fmt.Fprintf(out, "├───%s\n", v.Name())
-			dirTree(out, filepath.Join(path, v.Name()), printFiles)
+			fmt.Fprintf(out, prefix + "├───%s\n", v.Name())
+			walker(out, filepath.Join(path, v.Name()), printFiles, prefixCount+1)
 		} else {
-			fmt.Fprintf(out, "│\t├───%s (%s)\n", v.Name(), getFileSize(v))
+			fmt.Fprintf(out, prefix +"\t├───%s (%s)\n", v.Name(), getFileSize(v))
 		}
 	}
 	return nil
