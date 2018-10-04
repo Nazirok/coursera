@@ -1,13 +1,19 @@
 package main
 
 import (
-	"fmt"
-	"io"
 	"os"
-	"path/filepath"
-	"sort"
+	"io"
 	"io/ioutil"
+	"fmt"
+	"path/filepath"
+	"strconv"
 )
+
+/*
+Отступы - символ графики + символ табуляции ( \t )
+Для расчета символа графики в отступах подумайте про последний элемент и префикс предыдущих уровней.
+Там довольно простое условие. Хорошо помогает проговорить вслух то что вы видите на экране.
+ */
 
 func main() {
 	out := os.Stdout
@@ -22,38 +28,29 @@ func main() {
 	}
 }
 
-func dirTree(out io.Writer, basePath string, pintFiles bool) error {
+func dirTree(out io.Writer, path string, printFiles bool) error {
+	list, err := ioutil.ReadDir(path)
 
-}
-
-func walk(path string) error {
-	f, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("error during open directory %s: %s", path, err.Error())
 	}
-	list, _ := f.Readdir(0)
-	f.Close()
-	sort.Slice(list, func(i, j int) bool { return list[i].Name() < list[j].Name() })
+
 	for _, v := range list {
 		if v.IsDir() {
-			fmt.Printf("├───%s\n", v.Name())
-			walk(filepath.Join(path, v.Name()))
+			fmt.Fprintf(out, "├───%s\n", v.Name())
+			dirTree(out, filepath.Join(path, v.Name()), printFiles)
 		} else {
-			fmt.Printf("├───\t%s\n", v.Name())
+			fmt.Fprintf(out, "│\t├───%s (%s)\n", v.Name(), getFileSize(v))
 		}
 	}
 	return nil
 }
 
-func walk2(path string) error {
-	list, _ := ioutil.ReadDir(path)
-	for _, v := range list {
-		if v.IsDir() {
-			fmt.Printf("├───%s\n", v.Name())
-			walk(filepath.Join(path, v.Name()))
-		} else {
-			fmt.Printf("├───\t%s\n", v.Name())
-		}
+func getFileSize(fileInfo os.FileInfo) string {
+	size := fileInfo.Size()
+	if size == 0 {
+		return "empty"
 	}
-	return nil
+	return strconv.Itoa(int(size)) + "b"
 }
+
