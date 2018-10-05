@@ -18,8 +18,8 @@ import (
 const (
 	tabVerticalLine = "│\t"
 	tab             = "\t"
-	dirPrefix       = "├───%s\n"
-	lastDirPrefix   = "└───%s\n"
+	dirPrefix       = "├───"
+	lastDirPrefix   = "└───"
 )
 
 func main() {
@@ -30,7 +30,7 @@ func main() {
 	//path := os.Args[1]
 	path := `E:\gopath\src\github.com\coursera\hw1_tree\testdata`
 	//printFiles := len(os.Args) == 3 && os.Args[2] == "-f"
-	printFiles := true
+	printFiles := false
 	err := dirTree(out, path, printFiles)
 	if err != nil {
 		panic(err.Error())
@@ -52,25 +52,25 @@ func walker(out io.Writer, path string, printFiles bool, prefix string) error {
 	//mainLastPrefix := "│" + strings.Repeat("\t", prefixCount)
 	//dirPreifx := prefix + "├───%s\n"
 	//dirLastPreifx := prefix + "└───%s\n"
-	fileRefix := prefix + "├───%s (%s)\n"
+	//fileRefix := prefix + "├───%s (%s)\n"
 	//fileLastRefix := prefix + "└───%s (%s)\n"
 	lastElementIndex := len(list) - 1
 
 	for i, v := range list {
+		var newPrefix, outPrefix string
+		if i == lastElementIndex {
+			outPrefix = prefix + lastDirPrefix
+			newPrefix = prefix + tab
+		} else {
+			outPrefix = prefix + dirPrefix
+			newPrefix = prefix + tabVerticalLine
+		}
 		if v.IsDir() {
-			var newPrefix, outPrefix string
-			if i == lastElementIndex {
-				outPrefix = prefix + lastDirPrefix
-				newPrefix = prefix + tab
-			} else {
-				outPrefix = prefix + dirPrefix
-				newPrefix = prefix + tabVerticalLine
-			}
-			fmt.Fprintf(out, outPrefix, v.Name())
+			fmt.Fprintf(out, outPrefix+"%s\n", v.Name())
 			walker(out, filepath.Join(path, v.Name()), printFiles, newPrefix)
 
 		} else if printFiles {
-			fmt.Fprintf(out, fileRefix, v.Name(), getFileSize(v))
+			fmt.Fprintf(out, outPrefix+"%s (%s)\n", v.Name(), getFileSize(v))
 		}
 	}
 	return nil
