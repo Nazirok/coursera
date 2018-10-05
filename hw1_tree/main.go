@@ -1,10 +1,10 @@
 package main
 
 import (
-	"os"
+	"fmt"
 	"io"
 	"io/ioutil"
-	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -14,7 +14,7 @@ import (
 Отступы - символ графики + символ табуляции ( \t )
 Для расчета символа графики в отступах подумайте про последний элемент и префикс предыдущих уровней.
 Там довольно простое условие. Хорошо помогает проговорить вслух то что вы видите на экране.
- */
+*/
 
 func main() {
 	out := os.Stdout
@@ -22,9 +22,9 @@ func main() {
 	//	panic("usage go run main.go . [-f]")
 	//}
 	//path := os.Args[1]
-	path:= `E:\gopath\src\github.com\coursera\hw1_tree\testdata`
+	path := `D:\gopath\src\coursera\hw1_tree\testdata`
 	//printFiles := len(os.Args) == 3 && os.Args[2] == "-f"
-	printFiles := false
+	printFiles := true
 	err := dirTree(out, path, printFiles)
 	if err != nil {
 		panic(err.Error())
@@ -42,14 +42,28 @@ func walker(out io.Writer, path string, printFiles bool, prefixCount int) error 
 		return fmt.Errorf("error during open directory %s: %s", path, err.Error())
 	}
 
-	for _, v := range list {
+	mainPrefix := strings.Repeat("│\t", prefixCount)
+	mainLastPrefix := "│" + strings.Repeat("\t", prefixCount)
+	dirPreifx := mainPrefix + "├───%s\n"
+	dirLastPreifx := mainLastPrefix + "└───%s\n"
+	fileRefix := mainPrefix + "├───%s (%s)\n"
+	fileLastRefix := mainLastPrefix + "└───%s (%s)\n"
+	lastElementIndex := len(list) - 1
+
+	for i, v := range list {
 		if v.IsDir() {
-			prefix := strings.Repeat("│\t", prefixCount)
-			fmt.Fprintf(out, prefix + "├───%s\n", v.Name())
+			if i == lastElementIndex {
+				fmt.Fprintf(out, dirLastPreifx, v.Name())
+			} else {
+				fmt.Fprintf(out, dirPreifx, v.Name())
+			}
 			walker(out, filepath.Join(path, v.Name()), printFiles, prefixCount+1)
-		} else {
-			prefix := strings.Repeat("│\t", prefixCount)
-			fmt.Fprintf(out, prefix + "├───%s (%s)\n", v.Name(), getFileSize(v))
+		} else if printFiles {
+			if i == lastElementIndex {
+				fmt.Fprintf(out, fileLastRefix, v.Name(), getFileSize(v))
+			} else {
+				fmt.Fprintf(out, fileRefix, v.Name(), getFileSize(v))
+			}
 		}
 	}
 	return nil
@@ -62,4 +76,3 @@ func getFileSize(fileInfo os.FileInfo) string {
 	}
 	return strconv.Itoa(int(size)) + "b"
 }
-
