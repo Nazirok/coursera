@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 )
 
 /*
@@ -16,13 +15,20 @@ import (
 Там довольно простое условие. Хорошо помогает проговорить вслух то что вы видите на экране.
 */
 
+const (
+	tabVerticalLine = "│\t"
+	tab             = "\t"
+	dirPrefix       = "├───%s\n"
+	lastDirPrefix   = "└───%s\n"
+)
+
 func main() {
 	out := os.Stdout
 	//if !(len(os.Args) == 2 || len(os.Args) == 3) {
 	//	panic("usage go run main.go . [-f]")
 	//}
 	//path := os.Args[1]
-	path := `D:\gopath\src\coursera\hw1_tree\testdata`
+	path := `E:\gopath\src\github.com\coursera\hw1_tree\testdata`
 	//printFiles := len(os.Args) == 3 && os.Args[2] == "-f"
 	printFiles := true
 	err := dirTree(out, path, printFiles)
@@ -32,38 +38,39 @@ func main() {
 }
 
 func dirTree(out io.Writer, path string, printFiles bool) error {
-	return walker(out, path, printFiles, 0)
+	return walker(out, path, printFiles, "")
 }
 
-func walker(out io.Writer, path string, printFiles bool, prefixCount int) error {
+func walker(out io.Writer, path string, printFiles bool, prefix string) error {
 	list, err := ioutil.ReadDir(path)
 
 	if err != nil {
 		return fmt.Errorf("error during open directory %s: %s", path, err.Error())
 	}
 
-	mainPrefix := strings.Repeat("│\t", prefixCount)
-	mainLastPrefix := "│" + strings.Repeat("\t", prefixCount)
-	dirPreifx := mainPrefix + "├───%s\n"
-	dirLastPreifx := mainLastPrefix + "└───%s\n"
-	fileRefix := mainPrefix + "├───%s (%s)\n"
-	fileLastRefix := mainLastPrefix + "└───%s (%s)\n"
+	//mainPrefix := strings.Repeat("│\t", prefixCount)
+	//mainLastPrefix := "│" + strings.Repeat("\t", prefixCount)
+	//dirPreifx := prefix + "├───%s\n"
+	//dirLastPreifx := prefix + "└───%s\n"
+	fileRefix := prefix + "├───%s (%s)\n"
+	//fileLastRefix := prefix + "└───%s (%s)\n"
 	lastElementIndex := len(list) - 1
 
 	for i, v := range list {
 		if v.IsDir() {
+			var newPrefix, outPrefix string
 			if i == lastElementIndex {
-				fmt.Fprintf(out, dirLastPreifx, v.Name())
+				outPrefix = prefix + lastDirPrefix
+				newPrefix = prefix + tab
 			} else {
-				fmt.Fprintf(out, dirPreifx, v.Name())
+				outPrefix = prefix + dirPrefix
+				newPrefix = prefix + tabVerticalLine
 			}
-			walker(out, filepath.Join(path, v.Name()), printFiles, prefixCount+1)
+			fmt.Fprintf(out, outPrefix, v.Name())
+			walker(out, filepath.Join(path, v.Name()), printFiles, newPrefix)
+
 		} else if printFiles {
-			if i == lastElementIndex {
-				fmt.Fprintf(out, fileLastRefix, v.Name(), getFileSize(v))
-			} else {
-				fmt.Fprintf(out, fileRefix, v.Name(), getFileSize(v))
-			}
+			fmt.Fprintf(out, fileRefix, v.Name(), getFileSize(v))
 		}
 	}
 	return nil
