@@ -28,9 +28,9 @@ func main() {
 	//	panic("usage go run main.go . [-f]")
 	//}
 	//path := os.Args[1]
-	path := `E:\gopath\src\github.com\coursera\hw1_tree\testdata`
+	path := `C:\GoPath\src\github.com\coursera\hw1_tree\testdata`
 	//printFiles := len(os.Args) == 3 && os.Args[2] == "-f"
-	printFiles := false
+	printFiles := true
 	err := dirTree(out, path, printFiles)
 	if err != nil {
 		panic(err.Error())
@@ -42,34 +42,42 @@ func dirTree(out io.Writer, path string, printFiles bool) error {
 }
 
 func walker(out io.Writer, path string, printFiles bool, prefix string) error {
+	var lastElementIndex int
 	list, err := ioutil.ReadDir(path)
+	listLen := len(list)
+	lastElementIndex = listLen - 1
+
+	if !printFiles {
+		for i := listLen-1; i>=0 ;i-- {
+			if list[i].IsDir() {
+				lastElementIndex = i
+				break
+			}
+		}
+	}
 
 	if err != nil {
 		return fmt.Errorf("error during open directory %s: %s", path, err.Error())
 	}
 
-	//mainPrefix := strings.Repeat("│\t", prefixCount)
-	//mainLastPrefix := "│" + strings.Repeat("\t", prefixCount)
-	//dirPreifx := prefix + "├───%s\n"
-	//dirLastPreifx := prefix + "└───%s\n"
-	//fileRefix := prefix + "├───%s (%s)\n"
-	//fileLastRefix := prefix + "└───%s (%s)\n"
-	lastElementIndex := len(list) - 1
-
 	for i, v := range list {
 		var newPrefix, outPrefix string
-		if i == lastElementIndex {
-			outPrefix = prefix + lastDirPrefix
-			newPrefix = prefix + tab
-		} else {
-			outPrefix = prefix + dirPrefix
-			newPrefix = prefix + tabVerticalLine
-		}
+		outPrefix = prefix + dirPrefix
+		newPrefix = prefix + tabVerticalLine
+
 		if v.IsDir() {
+			if i == lastElementIndex {
+				outPrefix = prefix + lastDirPrefix
+				newPrefix = prefix + tab
+			}
 			fmt.Fprintf(out, outPrefix+"%s\n", v.Name())
 			walker(out, filepath.Join(path, v.Name()), printFiles, newPrefix)
 
 		} else if printFiles {
+			if i == lastElementIndex {
+				outPrefix = prefix + lastDirPrefix
+				newPrefix = prefix + tab
+			}
 			fmt.Fprintf(out, outPrefix+"%s (%s)\n", v.Name(), getFileSize(v))
 		}
 	}
