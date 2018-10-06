@@ -9,12 +9,6 @@ import (
 	"strconv"
 )
 
-/*
-Отступы - символ графики + символ табуляции ( \t )
-Для расчета символа графики в отступах подумайте про последний элемент и префикс предыдущих уровней.
-Там довольно простое условие. Хорошо помогает проговорить вслух то что вы видите на экране.
-*/
-
 const (
 	tabVerticalLine = "│\t"
 	tab             = "\t"
@@ -46,7 +40,7 @@ func walker(out io.Writer, path string, printFiles bool, prefix string) error {
 	lastElementIndex = listLen - 1
 
 	if !printFiles {
-		for i := listLen-1; i>=0 ;i-- {
+		for i := listLen - 1; i >= 0; i-- {
 			if list[i].IsDir() {
 				lastElementIndex = i
 				break
@@ -63,19 +57,15 @@ func walker(out io.Writer, path string, printFiles bool, prefix string) error {
 		outPrefix = prefix + dirPrefix
 		newPrefix = prefix + tabVerticalLine
 
+		if i == lastElementIndex {
+			outPrefix = prefix + lastDirPrefix
+			newPrefix = prefix + tab
+		}
+
 		if v.IsDir() {
-			if i == lastElementIndex {
-				outPrefix = prefix + lastDirPrefix
-				newPrefix = prefix + tab
-			}
 			fmt.Fprintf(out, outPrefix+"%s\n", v.Name())
 			walker(out, filepath.Join(path, v.Name()), printFiles, newPrefix)
-
 		} else if printFiles {
-			if i == lastElementIndex {
-				outPrefix = prefix + lastDirPrefix
-				newPrefix = prefix + tab
-			}
 			fmt.Fprintf(out, outPrefix+"%s (%s)\n", v.Name(), getFileSize(v))
 		}
 	}
