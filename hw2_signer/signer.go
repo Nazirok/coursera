@@ -12,6 +12,10 @@ func main() {
 	MultiHash(first)
 }
 
+func ExecutePipeline(job...func(in, out chan interface{})) {
+
+}
+
 func SingleHash(in, out chan interface{}) string {
 	md5Crc32 := DataSignerCrc32(DataSignerMd5(data))
 	crc32 := DataSignerCrc32(data)
