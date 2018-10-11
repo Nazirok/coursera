@@ -7,23 +7,35 @@ import (
 )
 
 func main() {
-	f := func(in, out chan interface{}) {
+	begin := func(in, out chan interface{}) {
 		out <- "0"
+		close(out)
+		fmt.Println("Close first")
+
 	}
-	ExecutePipeline(f, SingleHash, MultiHash, CombineResults)
+
+	end := func(in, out chan interface{}) {
+		data := <- in
+		close(out)
+		fmt.Println(data)
+
+	}
+
+	ExecutePipeline(begin, SingleHash, MultiHash, CombineResults, end)
 	//time.Sleep(10 * time.Second)
+
 }
 
 func ExecutePipeline(jobs ...func(in, out chan interface{})) {
 	in := make(chan interface{})
-	out := make(chan interface{})
+	out := make(chan interface{},1)
 	wg := &sync.WaitGroup{}
 	for _, job := range jobs {
 		wg.Add(1)
-		go func(wg *sync.WaitGroup, in, out chan interface{}) {
+		go func(wg *sync.WaitGroup, job func(in, out chan interface{}), in, out chan interface{}) {
 			defer wg.Done()
 			job(in, out)
-		}(wg, in, out)
+		}(wg, job, in, out)
 		in = out
 		out = make(chan interface{})
 	}
@@ -44,7 +56,8 @@ func SingleHash(in, out chan interface{}) {
 		out <- crc32 + "~" + md5Crc32
 
 	}
-	//close(out)
+	close(out)
+	fmt.Println("Close Single")
 }
 
 func MultiHash(in, out chan interface{}) {
@@ -65,15 +78,18 @@ func MultiHash(in, out chan interface{}) {
 		}
 		out <- toOut
 	}
-	//close(out)
+	close(out)
+	fmt.Println("Close Multi")
+
 }
 
 func CombineResults(in, out chan interface{}) {
 	fmt.Println("Combine")
 
 	for v := range in {
-		fmt.Println(v)
 		out <- v
 	}
-	//close(out)
+	close(out)
+	fmt.Println("Close Combine")
+
 }
