@@ -86,20 +86,22 @@ func MultiHash(in, out chan interface{}) {
 		acc := make(map[int]string)
 		wg := &sync.WaitGroup{}
 		mu := &sync.Mutex{}
-		a:= time.Now()
 
 		for i := 0; i <= 5; i++ {
 			wg.Add(1)
 			go func(wg *sync.WaitGroup, i int, data string) {
 				defer wg.Done()
 				d := strconv.Itoa(i) + data
+				a:= time.Now()
+				crc := DataSignerCrc32(d)
 				mu.Lock()
-				acc[i] = DataSignerCrc32(d)
+				acc[i] = crc
 				mu.Unlock()
+				fmt.Println(time.Since(a))
 			}(wg, i, data)
 		}
+
 		wg.Wait()
-		fmt.Println(time.Since(a))
 		for i := 0; i <= 5; i++ {
 			toOut += acc[i]
 		}
