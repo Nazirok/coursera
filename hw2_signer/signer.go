@@ -6,29 +6,16 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 )
 
 func main() {
 	begin := func(in, out chan interface{}) {
 		out <- 0
-		out <- 1
-		out <- 1
-		out <- 2
-		out <- 3
-		out <- 5
-		out <- 8
-
-		close(out)
-		fmt.Println("Close first")
-
 	}
 
 	end := func(in, out chan interface{}) {
 		data := <-in
-		close(out)
 		fmt.Println(data)
-
 	}
 	ExecutePipeline(begin, SingleHash, MultiHash, CombineResults, end)
 }
@@ -40,17 +27,19 @@ func ExecutePipeline(jobs ...job) {
 	for _, job := range jobs {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup, job func(in, out chan interface{}), in, out chan interface{}) {
-			defer wg.Done()
+			defer func() {
+				wg.Done()
+				close(out)
+			}()
 			job(in, out)
 		}(wg, job, in, out)
 		in = out
-		out = make(chan interface{}, 10)
+		out = make(chan interface{}, MaxInputDataLen)
 	}
 	wg.Wait()
 }
 
 func SingleHash(in, out chan interface{}) {
-	fmt.Println("SingleHash")
 	wg := &sync.WaitGroup{}
 	mu := &sync.Mutex{}
 	for v := range in {
@@ -69,7 +58,6 @@ func SingleHash(in, out chan interface{}) {
 
 			md5Crc32Chan := make(chan string)
 			crc32Chan := make(chan string)
-			a := time.Now()
 			go func(out chan string, data string) {
 				mu.Lock()
 				t := DataSignerMd5(data)
@@ -82,18 +70,14 @@ func SingleHash(in, out chan interface{}) {
 
 			md5Crc32 := <-md5Crc32Chan
 			crc32 := <-crc32Chan
-			fmt.Println("Single", time.Since(a))
 			out <- crc32 + "~" + md5Crc32
 		}(v, out, wg)
 
 	}
 	wg.Wait()
-	close(out)
-	fmt.Println("Close Single")
 }
 
 func MultiHash(in, out chan interface{}) {
-	fmt.Println("MultiHash")
 	wgg := &sync.WaitGroup{}
 	for v := range in {
 		wgg.Add(1)
@@ -105,7 +89,6 @@ func MultiHash(in, out chan interface{}) {
 			wg := &sync.WaitGroup{}
 			mu := &sync.Mutex{}
 
-			a := time.Now()
 			for i := 0; i <= 5; i++ {
 				wg.Add(1)
 				go func(wg *sync.WaitGroup, i int, data string) {
@@ -118,7 +101,6 @@ func MultiHash(in, out chan interface{}) {
 				}(wg, i, data)
 			}
 			wg.Wait()
-			fmt.Println("Multi", time.Since(a))
 			for i := 0; i <= 5; i++ {
 				toOut += acc[i]
 			}
@@ -128,13 +110,9 @@ func MultiHash(in, out chan interface{}) {
 
 	}
 	wgg.Wait()
-	close(out)
-	fmt.Println("Close Multi")
-
 }
 
 func CombineResults(in, out chan interface{}) {
-	fmt.Println("Combine")
 	result := make([]string, 0)
 
 	for v := range in {
@@ -142,7 +120,4 @@ func CombineResults(in, out chan interface{}) {
 	}
 	sort.Strings(result)
 	out <- strings.Join(result, "_")
-	close(out)
-	fmt.Println("Close Combine")
-
 }
