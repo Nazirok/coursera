@@ -1,3 +1,7 @@
+go test -bench . -benchmem
+go test -bench . -benchmem -cpuprofile=cpu.out -memprofile=mem.out -memprofilerate=1
+go tool pprof *имя файла*
+
 Есть функиця, которая что-то там ищет по файлу. Но делает она это не очень быстро. Надо её оптимизировать.
 
 Задание на работу с профайлером pprof.
