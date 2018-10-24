@@ -3,11 +3,11 @@ package main
 import (
 	"io"
 	"os"
-	"io/ioutil"
-	"regexp"
+		"regexp"
 	"strings"
+		"fmt"
+	"bufio"
 	"encoding/json"
-	"fmt"
 )
 
 // вам надо написать более быструю оптимальную этой функции
@@ -17,26 +17,23 @@ func FastSearch(out io.Writer) {
 		panic(err)
 	}
 
-	fileContents, err := ioutil.ReadAll(file)
-	if err != nil {
-		panic(err)
-	}
+	scanner := bufio.NewScanner(file)
 
 	r := regexp.MustCompile("@")
 	seenBrowsers := make(map[string] struct{})
 	foundUsers := ""
 
-	lines := strings.Split(string(fileContents), "\n")
+	//lines := strings.Split(string(fileContents), "\n")
 
 	users := make([]map[string]interface{}, 0)
-	for _, line := range lines {
+	for scanner.Scan() {
 		user := make(map[string]interface{})
 		// fmt.Printf("%v %v\n", err, line)
-		err := json.Unmarshal([]byte(line), &user)
+		err := json.Unmarshal([]byte(scanner.Text()), &user)
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println(user["browsers"])
+
 		users = append(users, user)
 	}
 
@@ -75,28 +72,6 @@ func FastSearch(out io.Writer) {
 				}
 			}
 		}
-
-		//for _, browserRaw := range browsers {
-		//	browser, ok := browserRaw.(string)
-		//	if !ok {
-		//		// log.Println("cant cast browser to string")
-		//		continue
-		//	}
-		//	if ok, err := regexp.MatchString("MSIE", browser); ok && err == nil {
-		//		isMSIE = true
-		//		notSeenBefore := true
-		//		for _, item := range seenBrowsers {
-		//			if item == browser {
-		//				notSeenBefore = false
-		//			}
-		//		}
-		//		if notSeenBefore {
-		//			// log.Printf("SLOW New browser: %s, first seen: %s", browser, user["name"])
-		//			seenBrowsers = append(seenBrowsers, browser)
-		//			uniqueBrowsers++
-		//		}
-		//	}
-		//}
 
 		if !(isAndroid && isMSIE) {
 			continue
