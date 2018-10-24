@@ -1,16 +1,27 @@
 package main
 
 import (
-	"io"
-	"os"
-		"regexp"
-	"strings"
-		"fmt"
 	"bufio"
 	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"regexp"
+	"strings"
 )
 
 // вам надо написать более быструю оптимальную этой функции
+
+type User struct {
+	Name     string   `json:"name"`
+	Phone    string   `json:"phone"`
+	Browsers []string `json:"browsers"`
+	Company  string   `json:"company"`
+	Country  string   `json:"country"`
+	Email    string   `json:"email"`
+	Job      string   `json:"job"`
+}
+
 func FastSearch(out io.Writer) {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -20,14 +31,12 @@ func FastSearch(out io.Writer) {
 	scanner := bufio.NewScanner(file)
 
 	r := regexp.MustCompile("@")
-	seenBrowsers := make(map[string] struct{})
+	seenBrowsers := make(map[string]struct{})
 	foundUsers := ""
 
-	//lines := strings.Split(string(fileContents), "\n")
-
-	users := make([]map[string]interface{}, 0)
+	users := make([]User, 0)
 	for scanner.Scan() {
-		user := make(map[string]interface{})
+		user := User{}
 		// fmt.Printf("%v %v\n", err, line)
 		err := json.Unmarshal([]byte(scanner.Text()), &user)
 		if err != nil {
@@ -42,19 +51,9 @@ func FastSearch(out io.Writer) {
 		isAndroid := false
 		isMSIE := false
 
-		browsers, ok := user["browsers"].([]interface{})
-		if !ok {
-			// log.Println("cant cast browsers")
-			continue
-		}
+		browsers := user.Browsers
 
-		for _, browserRaw := range browsers {
-			browser, ok := browserRaw.(string)
-			if !ok {
-				// log.Println("cant cast browser to string")
-				continue
-			}
-
+		for _, browser := range browsers {
 			android := strings.Contains(browser, "Android")
 			msie := strings.Contains(browser, "MSIE")
 
@@ -78,8 +77,8 @@ func FastSearch(out io.Writer) {
 		}
 
 		// log.Println("Android and MSIE user:", user["name"], user["email"])
-		email := r.ReplaceAllString(user["email"].(string), " [at] ")
-		foundUsers += fmt.Sprintf("[%d] %s <%s>\n", i, user["name"], email)
+		email := r.ReplaceAllString(user.Email, " [at] ")
+		foundUsers += fmt.Sprintf("[%d] %s <%s>\n", i, user.Name, email)
 	}
 
 	fmt.Fprintln(out, "found users:\n"+foundUsers)

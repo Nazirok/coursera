@@ -1,12 +1,4 @@
 
-name
-phone
-browsers
-company
-country
-email
-job
-
 BenchmarkSlow-4                5         205810540 ns/op        336853000 B/op    284166 allocs/op
 BenchmarkFast-4                5         203209840 ns/op        336852595 B/op    284162 allocs/op
 
@@ -24,5 +16,10 @@ BenchmarkFast-4               50          23421340 ns/op         5542956 B/op   
 
 BenchmarkSlow-8               20          96872110 ns/op        320500108 B/op    284169 allocs/op
 BenchmarkFast-8              100          14920329 ns/op         3454401 B/op      60757 allocs/op
+
+----------------------------------------------------------------------------------------------------
+
+BenchmarkSlow-8               20         102738180 ns/op        320500431 B/op    284170 allocs/op
+BenchmarkFast-8              100          12738507 ns/op         2786280 B/op      18841 allocs/op
 
 ----------------------------------------------------------------------------------------------------
