@@ -11,6 +11,7 @@ import (
 	easyjson "github.com/mailru/easyjson"
 	jlexer "github.com/mailru/easyjson/jlexer"
 	jwriter "github.com/mailru/easyjson/jwriter"
+	"bytes"
 )
 
 // suppress unused package warning
@@ -40,14 +41,11 @@ func FastSearch(out io.Writer) {
 		panic(err)
 	}
 
-	scanner := bufio.NewScanner(file)
-
-	//r := regexp.MustCompile("@")
-	seenBrowsers := make(map[string]struct{})
-	//var foundUsers bytes.Buffer
-
 	var i int
-	fmt.Fprintln(out, "found users:")
+	var buf bytes.Buffer
+	scanner := bufio.NewScanner(file)
+	seenBrowsers := make(map[string]struct{})
+	io.WriteString(out, "found users:\n")
 
 	for scanner.Scan() {
 		user := User{}
@@ -66,6 +64,7 @@ func FastSearch(out io.Writer) {
 				if _, ok := seenBrowsers[browser]; !ok {
 					seenBrowsers[browser] = struct{}{}
 				}
+				continue
 			}
 			if strings.Contains(browser, "MSIE") {
 				isMSIE = true
@@ -77,16 +76,15 @@ func FastSearch(out io.Writer) {
 
 		if isAndroid && isMSIE {
 			email := strings.Replace(user.Email, "@", " [at] ", -1)
-			//email := r.ReplaceAllString(user.Email, " [at] ")
-			fmt.Fprint(out, fmt.Sprintf("[%d] %s <%s>\n", i, user.Name, email))
-			//foundUsers.WriteString(fmt.Sprintf("[%d] %s <%s>\n", i, user.Name, email))
+			t := fmt.Sprintf("[%d] %s <%s>\n", i, user.Name, email)
+			io.WriteString(out, t)
 		}
 
 		i++
 	}
 
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Total unique browsers", len(seenBrowsers))
+	io.WriteString(out, "\n")
+	io.WriteString(out, fmt.Sprintf("Total unique browsers %d\n", len(seenBrowsers)))
 }
 
 func easyjson797c97daDecodeGithubComCourseraTemp(in *jlexer.Lexer, out *User) {
