@@ -2,12 +2,12 @@ package main
 
 import (
 	"bufio"
+	json "encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"regexp"
 	"strings"
-	json "encoding/json"
+
 	easyjson "github.com/mailru/easyjson"
 	jlexer "github.com/mailru/easyjson/jlexer"
 	jwriter "github.com/mailru/easyjson/jwriter"
@@ -42,15 +42,16 @@ func FastSearch(out io.Writer) {
 
 	scanner := bufio.NewScanner(file)
 
-	r := regexp.MustCompile("@")
+	//r := regexp.MustCompile("@")
 	seenBrowsers := make(map[string]struct{})
-	foundUsers := ""
+	//var foundUsers bytes.Buffer
 
 	var i int
+	fmt.Fprintln(out, "found users:")
 
 	for scanner.Scan() {
 		user := User{}
-		err := user.UnmarshalJSON([]byte(scanner.Text()))
+		err := user.UnmarshalJSON(scanner.Bytes())
 
 		if err != nil {
 			panic(err)
@@ -75,14 +76,16 @@ func FastSearch(out io.Writer) {
 		}
 
 		if isAndroid && isMSIE {
-			email := r.ReplaceAllString(user.Email, " [at] ")
-			foundUsers += fmt.Sprintf("[%d] %s <%s>\n", i, user.Name, email)
+			email := strings.Replace(user.Email, "@", " [at] ", -1)
+			//email := r.ReplaceAllString(user.Email, " [at] ")
+			fmt.Fprint(out, fmt.Sprintf("[%d] %s <%s>\n", i, user.Name, email))
+			//foundUsers.WriteString(fmt.Sprintf("[%d] %s <%s>\n", i, user.Name, email))
 		}
 
 		i++
 	}
 
-	fmt.Fprintln(out, "found users:\n"+foundUsers)
+	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Total unique browsers", len(seenBrowsers))
 }
 
