@@ -12,6 +12,7 @@ import (
 	jlexer "github.com/mailru/easyjson/jlexer"
 	jwriter "github.com/mailru/easyjson/jwriter"
 	"bytes"
+	"strconv"
 )
 
 // suppress unused package warning
@@ -75,9 +76,19 @@ func FastSearch(out io.Writer) {
 		}
 
 		if isAndroid && isMSIE {
-			email := strings.Replace(user.Email, "@", " [at] ", -1)
-			t := fmt.Sprintf("[%d] %s <%s>\n", i, user.Name, email)
-			io.WriteString(out, t)
+			buf.Reset()
+			//email := strings.Replace(user.Email, "@", " [at] ", -1)
+			buf.WriteRune('[')
+			buf.WriteString(strconv.Itoa(i))
+			buf.WriteRune(']')
+			buf.WriteRune(' ')
+			buf.WriteString(user.Name)
+			buf.WriteRune(' ')
+			buf.WriteRune('<')
+			buf.WriteString(strings.Replace(user.Email, "@", " [at] ", -1))
+			buf.WriteRune('>')
+			buf.WriteRune('\n')
+			io.WriteString(out, buf.String())
 		}
 
 		i++
