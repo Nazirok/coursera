@@ -5,10 +5,8 @@ import (
 	json "encoding/json"
 	"io"
 	"os"
-	"strings"
-
-	"bytes"
 	"strconv"
+	"strings"
 
 	easyjson "github.com/mailru/easyjson"
 	jlexer "github.com/mailru/easyjson/jlexer"
@@ -43,14 +41,23 @@ func FastSearch(out io.Writer) {
 	}
 
 	var i int
-	var buf bytes.Buffer
-	scanner := bufio.NewScanner(file)
-	seenBrowsers := make(map[string]struct{})
+
+	seenBrowsers := make([]string, 140)
+	uniqueBrowsers := 0
+	reader := bufio.NewReader(file)
 	io.WriteString(out, "found users:\n")
 
-	for scanner.Scan() {
+	for {
+		line, _, err := reader.ReadLine()
+
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+		}
+
 		user := User{}
-		err := user.UnmarshalJSON(scanner.Bytes())
+		err = user.UnmarshalJSON(line)
 
 		if err != nil {
 			panic(err)
@@ -62,43 +69,54 @@ func FastSearch(out io.Writer) {
 		for _, browser := range user.Browsers {
 			if strings.Contains(browser, "Android") {
 				isAndroid = true
-				if _, ok := seenBrowsers[browser]; !ok {
-					seenBrowsers[browser] = struct{}{}
+				notSeenBefore := true
+				for _, item := range seenBrowsers {
+					if item == browser {
+						notSeenBefore = false
+					}
+				}
+				if notSeenBefore {
+					seenBrowsers = append(seenBrowsers, browser)
+					uniqueBrowsers++
 				}
 				continue
 			}
 			if strings.Contains(browser, "MSIE") {
 				isMSIE = true
-				if _, ok := seenBrowsers[browser]; !ok {
-					seenBrowsers[browser] = struct{}{}
+				notSeenBefore := true
+				for _, item := range seenBrowsers {
+					if item == browser {
+						notSeenBefore = false
+						break
+					}
+				}
+				if notSeenBefore {
+					seenBrowsers = append(seenBrowsers, browser)
+					uniqueBrowsers++
 				}
 			}
 		}
 
 		if isAndroid && isMSIE {
-			buf.Reset()
-			buf.WriteRune('[')
-			buf.WriteString(strconv.Itoa(i))
-			buf.WriteRune(']')
-			buf.WriteRune(' ')
-			buf.WriteString(user.Name)
-			buf.WriteRune(' ')
-			buf.WriteRune('<')
-			buf.WriteString(strings.Replace(user.Email, "@", " [at] ", -1))
-			buf.WriteRune('>')
-			buf.WriteRune('\n')
-			io.WriteString(out, buf.String())
+			io.WriteString(out, "[")
+			io.WriteString(out, strconv.Itoa(i))
+			io.WriteString(out, "]")
+			io.WriteString(out, " ")
+			io.WriteString(out, user.Name)
+			io.WriteString(out, " ")
+			io.WriteString(out, "<")
+			io.WriteString(out, strings.Replace(user.Email, "@", " [at] ", -1))
+			io.WriteString(out, ">")
+			io.WriteString(out, "\n")
 		}
 
 		i++
 	}
+	io.WriteString(out, "\n")
+	io.WriteString(out, "Total unique browsers ")
+	io.WriteString(out, strconv.Itoa(uniqueBrowsers))
+	io.WriteString(out, "\n")
 
-	buf.Reset()
-	buf.WriteRune('\n')
-	buf.WriteString("Total unique browsers ")
-	buf.WriteString(strconv.Itoa(len(seenBrowsers)))
-	buf.WriteRune('\n')
-	io.WriteString(out, buf.String())
 }
 
 func easyjson797c97daDecodeGithubComCourseraTemp(in *jlexer.Lexer, out *User) {
