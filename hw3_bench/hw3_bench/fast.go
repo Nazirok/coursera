@@ -3,16 +3,16 @@ package main
 import (
 	"bufio"
 	json "encoding/json"
-	"fmt"
 	"io"
 	"os"
 	"strings"
 
+	"bytes"
+	"strconv"
+
 	easyjson "github.com/mailru/easyjson"
 	jlexer "github.com/mailru/easyjson/jlexer"
 	jwriter "github.com/mailru/easyjson/jwriter"
-	"bytes"
-	"strconv"
 )
 
 // suppress unused package warning
@@ -77,7 +77,6 @@ func FastSearch(out io.Writer) {
 
 		if isAndroid && isMSIE {
 			buf.Reset()
-			//email := strings.Replace(user.Email, "@", " [at] ", -1)
 			buf.WriteRune('[')
 			buf.WriteString(strconv.Itoa(i))
 			buf.WriteRune(']')
@@ -94,8 +93,12 @@ func FastSearch(out io.Writer) {
 		i++
 	}
 
-	io.WriteString(out, "\n")
-	io.WriteString(out, fmt.Sprintf("Total unique browsers %d\n", len(seenBrowsers)))
+	buf.Reset()
+	buf.WriteRune('\n')
+	buf.WriteString("Total unique browsers ")
+	buf.WriteString(strconv.Itoa(len(seenBrowsers)))
+	buf.WriteRune('\n')
+	io.WriteString(out, buf.String())
 }
 
 func easyjson797c97daDecodeGithubComCourseraTemp(in *jlexer.Lexer, out *User) {
