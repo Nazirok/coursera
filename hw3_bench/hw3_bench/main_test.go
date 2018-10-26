@@ -44,3 +44,24 @@ func BenchmarkFast(b *testing.B) {
 		FastSearch(ioutil.Discard)
 	}
 }
+
+var s string
+
+// func BenchmarkConvert(b *testing.B) {
+// 	var buf bytes.Buffer
+// 	var array = []byte{'m', 'a', 'r', 'k', 'o', 0}
+// 	for i := 0; i < b.N; i++ {
+// 		buf.Reset()
+// 		s = string(array)
+// 		buf.WriteString(s)
+// 	}
+// }
+//
+// func BenchmarkConvertBad(b *testing.B) {
+// 	var buf bytes.Buffer
+// 	var array = []byte{'m', 'a', 'r', 'k', 'o'}
+// 	for i := 0; i < b.N; i++ {
+// 		buf.Reset()
+// 		buf.WriteString(string(array))
+// 	}
+// }

@@ -2,15 +2,17 @@ package main
 
 import (
 	"bufio"
-	json "encoding/json"
+	"encoding/json"
 	"io"
 	"os"
 	"strconv"
 	"strings"
 
-	easyjson "github.com/mailru/easyjson"
-	jlexer "github.com/mailru/easyjson/jlexer"
-	jwriter "github.com/mailru/easyjson/jwriter"
+	"github.com/mailru/easyjson"
+	"github.com/mailru/easyjson/jlexer"
+	"github.com/mailru/easyjson/jwriter"
+	"sync"
+	"bytes"
 )
 
 // suppress unused package warning
@@ -34,31 +36,34 @@ type User struct {
 	Job      string   `json:"job"`
 }
 
+var UserPool = sync.Pool{
+	New: func() interface{} {
+		return bytes.NewBuffer(make([]byte, 0))
+	},
+}
+
 func FastSearch(out io.Writer) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		panic(err)
 	}
 
+	defer file.Close()
 	var i int
 
 	seenBrowsers := make([]string, 140)
 	uniqueBrowsers := 0
-	reader := bufio.NewReader(file)
+	scanner := bufio.NewScanner(file)
+	//reader := bufio.NewReader(file)
 	io.WriteString(out, "found users:\n")
-
-	for {
-		line, _, err := reader.ReadLine()
-
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-		}
+	for scanner.Scan() {
+		line := UserPool.Get().(*bytes.Buffer)
+		line.Write(scanner.Bytes())
 
 		user := User{}
-		err = user.UnmarshalJSON(line)
-
+		err = user.UnmarshalJSON(line.Bytes())
+		line.Reset()
+		UserPool.Put(line)
 		if err != nil {
 			panic(err)
 		}
