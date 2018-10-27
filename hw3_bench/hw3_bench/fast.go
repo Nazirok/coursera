@@ -11,8 +11,6 @@ import (
 	"github.com/mailru/easyjson"
 	"github.com/mailru/easyjson/jlexer"
 	"github.com/mailru/easyjson/jwriter"
-	"sync"
-	"bytes"
 )
 
 // suppress unused package warning
@@ -32,11 +30,6 @@ type User struct {
 	Email    string   `json:"email"`
 }
 
-var UserPool = sync.Pool{
-	New: func() interface{} {
-		return bytes.NewBuffer(make([]byte, 0))
-	},
-}
 
 func FastSearch(out io.Writer) {
 	file, err := os.Open(filePath)
@@ -53,13 +46,8 @@ func FastSearch(out io.Writer) {
 	//reader := bufio.NewReader(file)
 	io.WriteString(out, "found users:\n")
 	for scanner.Scan() {
-		line := UserPool.Get().(*bytes.Buffer)
-		line.Write(scanner.Bytes())
-
 		user := User{}
-		err = user.UnmarshalJSON(line.Bytes())
-		line.Reset()
-		UserPool.Put(line)
+		err = user.UnmarshalJSON(scanner.Bytes())
 		if err != nil {
 			panic(err)
 		}
