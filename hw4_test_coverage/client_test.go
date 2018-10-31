@@ -6,11 +6,28 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"os"
+
+	"encoding/xml"
+	"io"
+	"fmt"
 )
 
 // код писать тут
 
-const accessToken = "someToken"
+const (
+	accessToken = "someToken"
+	xmlPath string = "dataset.xml"
+)
+
+type UserXml struct {
+	ID        int    `xml:"id"`
+	FirstName string `xml:"first_name"`
+	LastName  string `xml:"last_name"`
+	Age       int    `xml:"age"`
+	About     string `xml:"about"`
+	Gender    string `xml:"gender"`
+}
 
 func SearchServer(w http.ResponseWriter, r *http.Request) {
 	at := r.Header.Get("AccessToken")
@@ -18,6 +35,44 @@ func SearchServer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
+}
+
+func getXml() {
+	file, err := os.Open(xmlPath)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	decoder := xml.NewDecoder(file)
+	users := make([]UserXml, 0)
+	for {
+		tok, tokenErr := decoder.Token()
+		if tokenErr != nil && tokenErr != io.EOF {
+			fmt.Println("error happend", tokenErr)
+			break
+		} else if tokenErr == io.EOF {
+			break
+		}
+		if tok == nil {
+			fmt.Println("t is nil break")
+		}
+		switch tok := tok.(type) {
+		case xml.StartElement:
+			if tok.Name.Local == "row" {
+				user := UserXml{}
+				if err := decoder.DecodeElement(&user, &tok); err != nil {
+					fmt.Println("error happend", err)
+				}
+				fmt.Println(user)
+				users = append(users, user)
+			}
+		}
+	}
+}
+
+func TestK(t *testing.T) {
+	getXml()
 }
 
 func TestUnauthorized(t *testing.T) {
@@ -88,4 +143,3 @@ func TestInternalServerError(t *testing.T) {
 		t.Error("Test internal server error failed")
 	}
 }
-
