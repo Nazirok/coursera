@@ -3,21 +3,22 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
-	"os"
 
 	"encoding/xml"
-	"io"
 	"fmt"
+	"io"
+	"encoding/json"
 )
 
 // код писать тут
 
 const (
-	accessToken = "someToken"
-	xmlPath string = "dataset.xml"
+	accessToken        = "someToken"
+	xmlPath     string = "dataset.xml"
 )
 
 type UserXml struct {
@@ -35,9 +36,26 @@ func SearchServer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
+	query := r.FormValue("query")
+	orderField := r.FormValue("order_field")
+	limit := r.FormValue("limit")
+	offset := r.FormValue("offset")
+	orderBy := r.FormValue("order_by")
+
+	if !(orderField == "Id" || orderField == "Age" || orderField == "Name") {
+		w.WriteHeader(http.StatusBadRequest)
+		errMsg := struct {
+			Error string
+		}{Error:"ErrorBadOrderField"}
+		out, _ := json.Marshal(errMsg)
+		w.Write(out)
+		return
+	}
+	usersXml := getXml(query)
+
 }
 
-func getXml() {
+func getXml(query string) []UserXml {
 	file, err := os.Open(xmlPath)
 	if err != nil {
 		panic(err)
@@ -64,15 +82,17 @@ func getXml() {
 				if err := decoder.DecodeElement(&user, &tok); err != nil {
 					fmt.Println("error happend", err)
 				}
-				fmt.Println(user)
-				users = append(users, user)
+				if strings.Contains(user.FirstName+user.LastName, query) || strings.Contains(user.About, query) {
+					users = append(users, user)
+				}
 			}
 		}
 	}
+	return users
 }
 
 func TestK(t *testing.T) {
-	getXml()
+	getXml("")
 }
 
 func TestUnauthorized(t *testing.T) {
@@ -141,5 +161,21 @@ func TestInternalServerError(t *testing.T) {
 	_, err := client.FindUsers(searcherReq)
 	if !strings.Contains(err.Error(), "SearchServer fatal error") {
 		t.Error("Test internal server error failed")
+	}
+}
+
+func TestBadOrderFiled(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(SearchServer))
+
+	client := SearchClient{
+		AccessToken: "someToken",
+		URL:         ts.URL,
+	}
+	searcherReq := SearchRequest{
+		OrderField: "someFiled",
+	}
+	_, err := client.FindUsers(searcherReq)
+	if err.Error() != fmt.Sprintf("OrderFeld %s invalid", searcherReq.OrderField) {
+		t.Error("Test bad order filed Failed")
 	}
 }
