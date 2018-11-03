@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
-	"encoding/json"
+	"strconv"
 )
 
 // код писать тут
@@ -39,23 +40,45 @@ func SearchServer(w http.ResponseWriter, r *http.Request) {
 	query := r.FormValue("query")
 	orderField := r.FormValue("order_field")
 	limit := r.FormValue("limit")
-	offset := r.FormValue("offset")
+	//offset := r.FormValue("offset")
 	orderBy := r.FormValue("order_by")
 
 	if !(orderField == "Id" || orderField == "Age" || orderField == "Name") {
 		w.WriteHeader(http.StatusBadRequest)
 		errMsg := struct {
 			Error string
-		}{Error:"ErrorBadOrderField"}
+		}{Error: "ErrorBadOrderField"}
 		out, _ := json.Marshal(errMsg)
 		w.Write(out)
 		return
 	}
-	usersXml := getXml(query)
+	if !(orderBy == "-1" || orderBy == "0" || orderBy == "1") {
+		w.WriteHeader(http.StatusBadRequest)
+		errMsg := struct {
+			Error string
+		}{Error: "BadOrderByField"}
+		out, _ := json.Marshal(errMsg)
+		w.Write(out)
+		return
+	}
+	usersXml := getXml(query, limit)
+	l := len(usersXml)
+	out := make([]User, 0, l)
+	for i := 0; i < l; i++ {
+		out = append(out, User{
+			Name:   usersXml[i].FirstName + usersXml[i].LastName,
+			Age:    usersXml[i].Age,
+			About:  usersXml[i].About,
+			Gender: usersXml[i].Gender,
+			Id:     usersXml[i].ID,
+		})
+	}
+	js, _ := json.Marshal(out)
+	w.Write(js)
 
 }
 
-func getXml(query string) []UserXml {
+func getXml(query, limit string) []UserXml {
 	file, err := os.Open(xmlPath)
 	if err != nil {
 		panic(err)
@@ -88,11 +111,8 @@ func getXml(query string) []UserXml {
 			}
 		}
 	}
-	return users
-}
-
-func TestK(t *testing.T) {
-	getXml("")
+	out, _ := strconv.Atoi(limit)
+	return users[0:out]
 }
 
 func TestUnauthorized(t *testing.T) {
@@ -177,5 +197,103 @@ func TestBadOrderFiled(t *testing.T) {
 	_, err := client.FindUsers(searcherReq)
 	if err.Error() != fmt.Sprintf("OrderFeld %s invalid", searcherReq.OrderField) {
 		t.Error("Test bad order filed Failed")
+	}
+}
+
+func TestJsonUnpackError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b := []byte{10, 55, 67, 34}
+		w.Write(b)
+	}))
+
+	client := SearchClient{URL: ts.URL}
+	searcherReq := SearchRequest{}
+	_, err := client.FindUsers(searcherReq)
+	if !strings.Contains(err.Error(), "cant unpack result json") {
+		t.Error("Test unpack json filed failed")
+	}
+}
+
+func TestJsonUnpackErrorBadRequest(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b := []byte{10, 55, 67, 34}
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write(b)
+	}))
+
+	client := SearchClient{URL: ts.URL}
+	searcherReq := SearchRequest{}
+	_, err := client.FindUsers(searcherReq)
+	if !strings.Contains(err.Error(), "cant unpack error json") {
+		t.Error("Test unpack json bad request failed")
+	}
+}
+
+func TestUnknownResponseError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(SearchServer))
+
+	client := SearchClient{
+		AccessToken: "someToken",
+		URL:         ts.URL,
+	}
+	searcherReq := SearchRequest{
+		OrderField: "Age",
+		OrderBy:    6,
+	}
+	_, err := client.FindUsers(searcherReq)
+	if !strings.Contains(err.Error(), "unknown bad request") {
+		t.Error("Test unknown response error failed")
+	}
+}
+
+func TestGetResultsWithLimit(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(SearchServer))
+
+	client := SearchClient{
+		AccessToken: "someToken",
+		URL:         ts.URL,
+	}
+	searcherReq := SearchRequest{
+		OrderField: "Age",
+		Limit:      10,
+	}
+	resp, err := client.FindUsers(searcherReq)
+	if err != nil {
+		t.Error("test get results failed")
+	}
+	if len(resp.Users) != 10 {
+		t.Error("test get results failed")
+	}
+}
+
+func TestGetResultsWithSmallLimit(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u := User{
+			Name:   "AAAAAAAAAAAA",
+			Age:    22,
+			Gender: "Male",
+			About:  "xcvxcvxcv",
+			Id:     4,
+		}
+		out := []User{u}
+		ls, _ := json.Marshal(out)
+		w.Write(ls)
+	}))
+
+	client := SearchClient{
+		AccessToken: "someToken",
+		URL:         ts.URL,
+	}
+	searcherReq := SearchRequest{
+		OrderField: "Age",
+		Limit:      10,
+	}
+
+	resp, err := client.FindUsers(searcherReq)
+	if err != nil {
+		t.Error("test get results failed")
+	}
+	if len(resp.Users) != 1 {
+		t.Error("test get results with small limit failed")
 	}
 }
