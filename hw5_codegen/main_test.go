@@ -39,24 +39,39 @@ type CR map[string]interface{}
 
 func TestU(t *testing.T) {
 	ts := httptest.NewServer(NewMyApi())
-	req, _ := http.NewRequest("GET", ts.URL + "/user", nil)
-	resp, err := client.Do(req)
-	fmt.Println(resp.StatusCode)
-	if err != nil {
-		fmt.Println(err)
+
+	cases := []Case{
+		Case{// успешный запрос
+			Path: ApiUserProfile,
+			Query: "login=rvasily",
+			Status: http.StatusOK,
+			Result: CR{
+				"error": "",
+				"response": CR{
+					"id":        42,
+					"login":     "rvasily",
+					"full_name": "Vasily Romanov",
+					"status":    20,
+				},
+			},
+		},
+		Case{ // успешный запрос - POST
+			Path:   ApiUserProfile,
+			Method: http.MethodPost,
+			Query:  "login=rvasily",
+			Status: http.StatusOK,
+			Result: CR{
+				"error": "",
+				"response": CR{
+					"id":        42,
+					"login":     "rvasily",
+					"full_name": "Vasily Romanov",
+					"status":    20,
+				},
+			},
+		},
 	}
-	req, _ = http.NewRequest("POST", ts.URL + "/user/create", nil)
-	resp, err = client.Do(req)
-	fmt.Println(resp.StatusCode)
-	if err != nil {
-		fmt.Println(err)
-	}
-	req, _ = http.NewRequest("PUT", ts.URL + "/user", nil)
-	resp, err = client.Do(req)
-	fmt.Println(resp.StatusCode)
-	if err != nil {
-		fmt.Println(err)
-	}
+	runTests(t, ts, cases)
 }
 
 func TestMyApi(t *testing.T) {
