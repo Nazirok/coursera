@@ -18,18 +18,18 @@ func (srv *MyApi) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Write(data)
 			return
 		}
-		srv.handlerPOST(w,r)
+		srv.handlerPOST(w, r)
 	case "/user/profile":
 		if !(r.Method == http.MethodGet || r.Method == http.MethodPost) {
 			w.WriteHeader(http.StatusNotAcceptable)
-			data, _ := json.Marshal(resp{"error":"bad method"})
+			data, _ := json.Marshal(resp{"error": "bad method"})
 			w.Write(data)
 			return
 		}
-		srv.handlerGET(w,r)
+		srv.handlerGET(w, r)
 	default:
 		w.WriteHeader(http.StatusNotFound)
-		data, _ := json.Marshal(resp{"error":"unknown method"})
+		data, _ := json.Marshal(resp{"error": "unknown method"})
 		w.Write(data)
 		return
 	}
@@ -112,7 +112,7 @@ func (srv *MyApi) handlerPOST(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"error":"",
+		"error":    "",
 		"response": user,
 	}
 	data, _ := json.Marshal(response)
@@ -148,7 +148,7 @@ func (srv *MyApi) handlerGET(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response := map[string]interface{}{
-		"error":"",
+		"error":    "",
 		"response": user,
 	}
 	data, _ := json.Marshal(response)
