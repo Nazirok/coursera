@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"go/ast"
@@ -8,8 +9,8 @@ import (
 	"go/token"
 	"log"
 	"os"
+	"reflect"
 	"strings"
-	"bytes"
 )
 
 var (
@@ -29,10 +30,16 @@ var (
 			return
 		}`
 
-	caseDefault =
-`	default:
+	caseDefault = `	default:
 		w.WriteHeader(http.StatusNotFound)
 		data, _ := json.Marshal(resp{"error": "unknown method"})
+		w.Write(data)
+		return
+	}`
+
+	authTempl = `	if at := r.Header.Get("X-Auth"); at != "100500" {
+		w.WriteHeader(http.StatusForbidden)
+		data, _ := json.Marshal(resp{"error": "unauthorized"})
 		w.Write(data)
 		return
 	}`
@@ -46,13 +53,25 @@ type (
 	}
 
 	funcGenInfo struct {
-		astFunc       *ast.FuncDecl
-		mark          funcMarkData
-		receiverAlias string
+		astFunc          *ast.FuncDecl
+		mark             funcMarkData
+		receiverAlias    string
+		funcParamsStruct *ast.StructType
+	}
+
+	validatorData struct {
+		required  bool
+		min       string
+		max       string
+		paramname string
+		enum      []string
+		sDefault  string
 	}
 )
 
+
 func main() {
+	paramsMap := make(map[string]string)
 	fset := token.NewFileSet()
 	//node, err := parser.ParseFile(fset, os.Args[1], nil, parser.ParseComments)
 	node, err := parser.ParseFile(fset, "api.go", nil, parser.ParseComments)
@@ -76,17 +95,25 @@ func main() {
 			continue
 		}
 
-		//var mark funcMarkData
 		for _, comment := range fnc.Doc.List {
 			if strings.HasPrefix(comment.Text, "// apigen:api") {
-				if fnc.Recv == nil {
-					continue
-				}
-
 				var mark funcMarkData
 				j := strings.TrimLeft(comment.Text, "// apigen:api ")
 				if err := json.Unmarshal([]byte(j), &mark); err != nil {
 					panic(err)
+				}
+
+				if fnc.Recv == nil {
+					continue
+				}
+
+				if len(fnc.Type.Params.List) < 1 {
+					continue
+				}
+
+				funcParamStruct, ok := fnc.Type.Params.List[1].Type.(*ast.Ident)
+				if !ok {
+					continue
 				}
 
 				recv := fnc.Recv.List[0]
@@ -103,6 +130,29 @@ func main() {
 						genInfo[x.Name] = append(genInfo[x.Name], funcGen)
 					}
 				}
+
+				for _, f := range node.Decls {
+					g, ok := f.(*ast.GenDecl)
+					if !ok {
+						continue
+					}
+				SPECS_LOOP:
+					for _, spec := range g.Specs {
+						currType, ok := spec.(*ast.TypeSpec)
+						if !ok {
+							continue
+						}
+
+						currStruct, ok := currType.Type.(*ast.StructType)
+						if !ok {
+							continue
+						}
+						if currType.Name.Name == funcParamStruct.Name {
+							funcGen.funcParamsStruct = currStruct
+							break SPECS_LOOP
+						}
+					}
+				}
 			}
 		}
 	}
@@ -112,7 +162,7 @@ func main() {
 	}
 
 	var serveHTTPBuf bytes.Buffer
-	//var funcsBuf bytes.Buffer
+	var funcsBuf bytes.Buffer
 
 	fmt.Fprintln(out, `import "context"`)
 	fmt.Fprintln(out, `import "encoding/json"`)
@@ -127,20 +177,152 @@ func main() {
 		serveHTTPBuf.WriteString("\t")
 		serveHTTPBuf.WriteString("switch r.URL.Path {\n")
 		for _, fnc := range v {
-			serveHTTPBuf.WriteString("\tcase \""+fnc.mark.URL+"\":")
+			serveHTTPBuf.WriteString("\tcase \"" + fnc.mark.URL + "\":")
 			if fnc.mark.Method == "POST" {
 				serveHTTPBuf.WriteString(checkMethodPost)
 				serveHTTPBuf.WriteString("\n\t\t")
-				serveHTTPBuf.WriteString("srv.handle"+k+fnc.astFunc.Name.Name+"(w, r)\n")
+				serveHTTPBuf.WriteString("srv.handle" + k + fnc.astFunc.Name.Name + "(w, r)\n")
 			} else {
 				serveHTTPBuf.WriteString(checkMethods)
 				serveHTTPBuf.WriteString("\n\t\t")
-				serveHTTPBuf.WriteString("srv.handle"+k+fnc.astFunc.Name.Name+"(w, r)\n")
+				serveHTTPBuf.WriteString("srv.handle" + k + fnc.astFunc.Name.Name + "(w, r)\n")
 			}
+			funcsBuf.WriteString(fmt.Sprintf("func (%s *%s) %s(w http.ResponseWriter, r *http.Request) {\n", v[0].receiverAlias, k, "handle"+k+fnc.astFunc.Name.Name))
+			funcsBuf.WriteString("\tw.Header().Set(\"Content-Type\", \"application/json\")\n")
+
+			if fnc.mark.Auth {
+				funcsBuf.WriteString(authTempl)
+				funcsBuf.WriteString("\n\n")
+			}
+
+			if fnc.funcParamsStruct == nil {
+				continue
+			}
+
+		FIELDS_LOOP:
+			for _, field := range fnc.funcParamsStruct.Fields.List {
+
+				if field.Tag == nil {
+					continue
+				}
+				var tagValue string
+				tag := reflect.StructTag(field.Tag.Value[1 : len(field.Tag.Value)-1])
+				tagValue = tag.Get("apivalidator")
+				if tagValue == "-" {
+					continue FIELDS_LOOP
+				}
+
+				validStruct := fieldTagParser(tagValue)
+				fieldName := field.Names[0].Name
+				paramName := strings.ToLower(fieldName)
+				fileType := field.Type.(*ast.Ident).Name
+
+				var isString bool
+				switch fileType {
+				case "int":
+					isString = false
+				case "string":
+					isString = true
+				default:
+					continue
+				}
+
+				if validStruct.paramname != "" {
+					paramName = validStruct.paramname
+				}
+				funcsBuf.WriteString("\t" + paramName + " := r.FormValue(\"" + paramName + "\")\n")
+
+				if validStruct.required {
+					if isString {
+						funcsBuf.WriteString("\tif " + paramName + " == \"\" {\n")
+					} else {
+						funcsBuf.WriteString("\tif len(" + paramName + ") == 0 {\n")
+					}
+					writeBadReq(&funcsBuf, paramName+" must me not empty")
+					funcsBuf.WriteString("\t}\n\n")
+				}
+
+				if validStruct.sDefault != "" {
+					/*
+					if status == "" {
+					status = "user"
+					 */
+					if isString{
+						funcsBuf.WriteString("\tif "+ paramName + " == \"\" {\n")
+						funcsBuf.WriteString(paramName+" = " + validStruct.sDefault)
+					} else {
+
+					}
+
+				}
+
+				if validStruct.min != "" {
+					if isString {
+						funcsBuf.WriteString("\tif len(" + paramName + ") < "+validStruct.min+" {\n")
+						writeBadReq(&funcsBuf, fmt.Sprintf("%s len must be >= %s",  paramName, validStruct.min))
+					} else {
+						funcsBuf.WriteString("\tif " + paramName + " < "+validStruct.min+" {\n")
+						writeBadReq(&funcsBuf, fmt.Sprintf("%s must be >= %s",  paramName, validStruct.min))
+					}
+					funcsBuf.WriteString("\t}\n\n")
+				}
+
+				if validStruct.max != "" {
+					if isString {
+						funcsBuf.WriteString("\tif len(" + paramName + ") > "+validStruct.max+" {\n")
+						writeBadReq(&funcsBuf, fmt.Sprintf("%s len must be <= %s",  paramName, validStruct.max))
+					} else {
+						funcsBuf.WriteString("\tif " + paramName + " > "+validStruct.max+" {\n")
+						writeBadReq(&funcsBuf, fmt.Sprintf("%s must be <= %s",  paramName, validStruct.max))
+					}
+					funcsBuf.WriteString("\t}\n\n")
+				}
+
+
+				paramsMap[fieldName]=paramName
+			}
+
 		}
 		serveHTTPBuf.WriteString(caseDefault)
 		serveHTTPBuf.WriteString("\n")
-
+		serveHTTPBuf.WriteString("}\n")
+		serveHTTPBuf.WriteString("\n")
 	}
 	fmt.Fprintln(out, serveHTTPBuf.String())
+	fmt.Fprintln(out, funcsBuf.String())
+
+}
+
+func writeBadReq(buf *bytes.Buffer, errMsg string) {
+	buf.WriteString("\t\tw.WriteHeader(http.StatusBadRequest)\n")
+	buf.WriteString("\t\tdata, _ := json.Marshal(resp{\"error\": \"" + errMsg + "\"})\n")
+	buf.WriteString("\t\tw.Write(data)\n")
+	buf.WriteString("\t\treturn\n")
+}
+
+
+func fieldTagParser(s string) validatorData {
+	var out validatorData
+	data := strings.Split(s, ",")
+
+	for _, d := range data {
+		p := strings.Split(d, "=")
+		switch p[0] {
+		case "required":
+			out.required = true
+		case "min":
+			out.min = p[1]
+		case "max":
+			out.max=p[1]
+		case "paramname":
+			out.paramname = p[1]
+		case "default":
+			out.sDefault = p[1]
+		case "enum":
+			for _, e := range strings.Split(p[1], "|") {
+				out.enum = append(out.enum, e)
+			}
+		}
+	}
+	return out
 }
