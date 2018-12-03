@@ -43,6 +43,30 @@ var (
 		w.Write(data)
 		return
 	}`
+
+	funcsBody = `
+	if err != nil {
+		if v, ok := err.(ApiError); ok {
+			w.WriteHeader(v.HTTPStatus)
+			data, _ := json.Marshal(resp{"error": v.Error()})
+			w.Write(data)
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		data, _ := json.Marshal(resp{"error": err.Error()})
+		w.Write(data)
+		return
+	}
+
+	response := map[string]interface{}{
+		"error":    "",
+		"response": user,
+	}
+	data, _ := json.Marshal(response)
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+	return
+`
 )
 
 type (
@@ -57,6 +81,7 @@ type (
 		mark             funcMarkData
 		receiverAlias    string
 		funcParamsStruct *ast.StructType
+		funcStructName   string
 	}
 
 	validatorData struct {
@@ -69,20 +94,17 @@ type (
 	}
 )
 
-
 func main() {
-	paramsMap := make(map[string]string)
 	fset := token.NewFileSet()
-	//node, err := parser.ParseFile(fset, os.Args[1], nil, parser.ParseComments)
-	node, err := parser.ParseFile(fset, "api.go", nil, parser.ParseComments)
+	node, err := parser.ParseFile(fset, os.Args[1], nil, parser.ParseComments)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 	genInfo := make(map[string][]*funcGenInfo)
 
-	//out, _ := os.Create(os.Args[2])
-	out := os.Stdout
+	out, _ := os.Create(os.Args[2])
+	//out := os.Stdout
 	fmt.Fprintln(out, `package `+node.Name.Name)
 	fmt.Fprintln(out)
 
@@ -149,6 +171,7 @@ func main() {
 						}
 						if currType.Name.Name == funcParamStruct.Name {
 							funcGen.funcParamsStruct = currStruct
+							funcGen.funcStructName = currType.Name.Name
 							break SPECS_LOOP
 						}
 					}
@@ -187,7 +210,7 @@ func main() {
 				serveHTTPBuf.WriteString("\n\t\t")
 				serveHTTPBuf.WriteString("srv.handle" + k + fnc.astFunc.Name.Name + "(w, r)\n")
 			}
-			funcsBuf.WriteString(fmt.Sprintf("func (%s *%s) %s(w http.ResponseWriter, r *http.Request) {\n", v[0].receiverAlias, k, "handle"+k+fnc.astFunc.Name.Name))
+			funcsBuf.WriteString(fmt.Sprintf("func (%s *%s) %s(w http.ResponseWriter, r *http.Request) {\n", fnc.receiverAlias, k, "handle"+k+fnc.astFunc.Name.Name))
 			funcsBuf.WriteString("\tw.Header().Set(\"Content-Type\", \"application/json\")\n")
 
 			if fnc.mark.Auth {
@@ -199,6 +222,7 @@ func main() {
 				continue
 			}
 
+			paramsMap := make(map[string]string)
 		FIELDS_LOOP:
 			for _, field := range fnc.funcParamsStruct.Fields.List {
 
@@ -230,7 +254,18 @@ func main() {
 				if validStruct.paramname != "" {
 					paramName = validStruct.paramname
 				}
-				funcsBuf.WriteString("\t" + paramName + " := r.FormValue(\"" + paramName + "\")\n")
+
+				if isString {
+					funcsBuf.WriteString("\t" + paramName + " := r.FormValue(\"" + paramName + "\")\n")
+				} else {
+					funcsBuf.WriteString("\t" + paramName + "_int" + " := r.FormValue(\"" + paramName + "\")\n")
+					funcsBuf.WriteString(fmt.Sprintf("\t%s, err := strconv.Atoi(%s)\n", paramName, paramName+"_int"))
+					funcsBuf.WriteString("\tif err != nil {\n")
+					writeBadReq(&funcsBuf, paramName+" must be int")
+					funcsBuf.WriteString("\t}\n")
+					funcsBuf.WriteString("\n")
+
+				}
 
 				if validStruct.required {
 					if isString {
@@ -243,44 +278,72 @@ func main() {
 				}
 
 				if validStruct.sDefault != "" {
-					/*
-					if status == "" {
-					status = "user"
-					 */
-					if isString{
-						funcsBuf.WriteString("\tif "+ paramName + " == \"\" {\n")
-						funcsBuf.WriteString(paramName+" = " + validStruct.sDefault)
+					if isString {
+						funcsBuf.WriteString(fmt.Sprintf("\tif %s == \"\" {\n", paramName))
+						funcsBuf.WriteString(fmt.Sprintf("\t\t%s = \"%s\"\n", paramName, validStruct.sDefault))
 					} else {
-
+						funcsBuf.WriteString("\tif " + paramName + " == 0 {\n")
+						funcsBuf.WriteString(fmt.Sprintf("\t\t%s = %s\n", paramName, validStruct.sDefault))
 					}
-
+					funcsBuf.WriteString("\t}\n")
+					funcsBuf.WriteString("\n")
 				}
 
 				if validStruct.min != "" {
 					if isString {
-						funcsBuf.WriteString("\tif len(" + paramName + ") < "+validStruct.min+" {\n")
-						writeBadReq(&funcsBuf, fmt.Sprintf("%s len must be >= %s",  paramName, validStruct.min))
+						funcsBuf.WriteString("\tif len(" + paramName + ") < " + validStruct.min + " {\n")
+						writeBadReq(&funcsBuf, fmt.Sprintf("%s len must be >= %s", paramName, validStruct.min))
 					} else {
-						funcsBuf.WriteString("\tif " + paramName + " < "+validStruct.min+" {\n")
-						writeBadReq(&funcsBuf, fmt.Sprintf("%s must be >= %s",  paramName, validStruct.min))
+						funcsBuf.WriteString("\tif " + paramName + " < " + validStruct.min + " {\n")
+						writeBadReq(&funcsBuf, fmt.Sprintf("%s must be >= %s", paramName, validStruct.min))
 					}
 					funcsBuf.WriteString("\t}\n\n")
 				}
 
 				if validStruct.max != "" {
 					if isString {
-						funcsBuf.WriteString("\tif len(" + paramName + ") > "+validStruct.max+" {\n")
-						writeBadReq(&funcsBuf, fmt.Sprintf("%s len must be <= %s",  paramName, validStruct.max))
+						funcsBuf.WriteString("\tif len(" + paramName + ") > " + validStruct.max + " {\n")
+						writeBadReq(&funcsBuf, fmt.Sprintf("%s len must be <= %s", paramName, validStruct.max))
 					} else {
-						funcsBuf.WriteString("\tif " + paramName + " > "+validStruct.max+" {\n")
-						writeBadReq(&funcsBuf, fmt.Sprintf("%s must be <= %s",  paramName, validStruct.max))
+						funcsBuf.WriteString("\tif " + paramName + " > " + validStruct.max + " {\n")
+						writeBadReq(&funcsBuf, fmt.Sprintf("%s must be <= %s", paramName, validStruct.max))
 					}
 					funcsBuf.WriteString("\t}\n\n")
 				}
 
+				if len(validStruct.enum) > 0 {
+					if validStruct.sDefault != "" {
+						funcsBuf.WriteString("\tif !(")
 
-				paramsMap[fieldName]=paramName
+						var temp, errMsg string
+						errMsg = "["
+						for _, v := range validStruct.enum {
+							errMsg += v + ", "
+							temp += fmt.Sprintf("%s == \"%s\" || ", paramName, v)
+						}
+						temp = strings.TrimSuffix(temp, " || ")
+						errMsg = strings.TrimSuffix(errMsg, ", ")
+						errMsg = errMsg + "]"
+						funcsBuf.WriteString(temp+")")
+						funcsBuf.WriteString(" {\n")
+						writeBadReq(&funcsBuf, paramName+" must be one of "+errMsg)
+						funcsBuf.WriteString("\t}\n\n")
+					}
+				}
+
+				paramsMap[fieldName] = paramName
 			}
+
+			funcsBuf.WriteString("\tin := " + fnc.funcStructName + "{\n")
+			for k, v := range paramsMap {
+				funcsBuf.WriteString(fmt.Sprintf("\t\t%s: %s,\n", k, v))
+			}
+			funcsBuf.WriteString("\t}\n\n")
+			//	user, err := srv.Create(context.Background(), in)
+			// fnc.receiverAlias, k, "handle"+k+fnc.astFunc.Name.Name
+			funcsBuf.WriteString(fmt.Sprintf("\tuser, err := %s.%s(context.Background(), in)\n", fnc.receiverAlias, fnc.astFunc.Name.Name))
+			funcsBuf.WriteString(funcsBody)
+			funcsBuf.WriteString("}\n")
 
 		}
 		serveHTTPBuf.WriteString(caseDefault)
@@ -300,7 +363,6 @@ func writeBadReq(buf *bytes.Buffer, errMsg string) {
 	buf.WriteString("\t\treturn\n")
 }
 
-
 func fieldTagParser(s string) validatorData {
 	var out validatorData
 	data := strings.Split(s, ",")
@@ -313,7 +375,7 @@ func fieldTagParser(s string) validatorData {
 		case "min":
 			out.min = p[1]
 		case "max":
-			out.max=p[1]
+			out.max = p[1]
 		case "paramname":
 			out.paramname = p[1]
 		case "default":
