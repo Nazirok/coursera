@@ -23,11 +23,11 @@ func main() {
 		panic(err)
 	}
 
-	NewDbExplorer(db)
-	//handler, err := NewDbExplorer(db)
-	//if err != nil {
-	//	panic(err)
-	//}
+	//NewDbExplorer(db)
+	_, err = NewDbExplorer(db)
+	if err != nil {
+		panic(err)
+	}
 
 	//fmt.Println("starting server at :8082")
 	//http.ListenAndServe(":8082", handler)
