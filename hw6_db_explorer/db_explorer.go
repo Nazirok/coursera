@@ -5,12 +5,12 @@ package main
 
 import (
 	"database/sql"
-	"encoding/json"
 
 	_ "github.com/go-sql-driver/mysql"
 
-	"fmt"
+	"encoding/json"
 	"net/http"
+	"strings"
 )
 
 func NewDbExplorer(db *sql.DB) (*dbExplorer, error) {
@@ -62,12 +62,12 @@ func NewDbExplorer(db *sql.DB) (*dbExplorer, error) {
 		}
 	}
 
-	jsonData, err := json.Marshal(tablesData)
-	if err != nil {
-		fmt.Println("marshal", err)
-	}
-
-	fmt.Printf("%s\n", jsonData)
+	//jsonData, err := json.Marshal(tablesData)
+	//if err != nil {
+	//	fmt.Println("marshal", err)
+	//}
+	//
+	//fmt.Printf("%s\n", jsonData)
 
 	return &dbExplorer{DB: db, Tables: tablesData}, nil
 }
@@ -77,6 +77,52 @@ type dbExplorer struct {
 	Tables map[string][]map[string]interface{}
 }
 
-func (d *dbExplorer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+type resp map[string]interface{}
 
+func (d *dbExplorer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.URL.Path == "/" {
+		if r.Method == http.MethodGet {
+			d.handleBase(w, r)
+		} else {
+			writeResponse(w, resp{"error": "bad method"}, http.StatusInternalServerError)
+		}
+	} else {
+		p := strings.Split(r.URL.Path, "/")[1:]
+		//l := len(p)
+		if !d.tableExist(p[0]) {
+			writeResponse(w, resp{"error": "unknown table"}, http.StatusNotFound)
+		}
+	}
+}
+
+func (d *dbExplorer) handleBase(w http.ResponseWriter, r *http.Request) {
+	out := make([]string, 0, len(d.Tables))
+	for k := range d.Tables {
+		out = append(out, k)
+	}
+	res := resp{
+		"error": "",
+		"response": map[string][]string{
+			"tables": out,
+		},
+	}
+	writeResponse(w, res, http.StatusOK)
+}
+
+func writeResponse(w http.ResponseWriter, res resp, status int) {
+	data, err := json.Marshal(res)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(status)
+	w.Write(data)
+	return
+}
+
+func (d *dbExplorer) tableExist(table string) bool {
+	_, ok := d.Tables[table]
+	return ok
 }
