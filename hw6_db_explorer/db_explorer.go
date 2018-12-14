@@ -9,26 +9,18 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 
 	"encoding/json"
-	"net/http"
+		"net/http"
 	"strings"
 	"fmt"
 )
 
 func NewDbExplorer(db *sql.DB) (*dbExplorer, error) {
-	defer func() {
-		fmt.Println("Conns: ", db.Stats().OpenConnections)
-	}()
-	fmt.Println("Conns beign: ", db.Stats().OpenConnections)
-	tablesData := make(map[string][]map[string]interface{})
-	rows, err := db.Query("SHOW TABLES")
+	tables, err := getTables(db)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var table string
-		rows.Scan(&table)
+	tablesData := make(map[string][]map[string]interface{})
+	for _, table := range tables {
 		columns, err := getTableColumns(db, table)
 		if err != nil {
 			return nil, err
@@ -98,6 +90,8 @@ func (d *dbExplorer) handleGetAll(w http.ResponseWriter, r *http.Request, table 
 	defer rows.Close()
 
 	columns, err := rows.Columns()
+	typ, _ := rows.ColumnTypes()
+	fmt.Println("COLUMN TYPES: ",typ[3].Name(), typ[3].ScanType())
 	count := len(columns)
 	values := make([]interface{}, count)
 	scanArgs := make([]interface{}, count)
@@ -121,6 +115,8 @@ func (d *dbExplorer) handleGetAll(w http.ResponseWriter, r *http.Request, table 
 				entry[col] = v.(string)
 			case int:
 				entry[col] = v.(int)
+			case uint8:
+				entry[col] = v.(uint8)
 			case bool:
 				entry[col] = v.(bool)
 			case nil:
@@ -135,6 +131,22 @@ func (d *dbExplorer) handleGetAll(w http.ResponseWriter, r *http.Request, table 
 		},
 	}
 	writeResponse(w, res, http.StatusOK)
+}
+
+func getTables(db *sql.DB) ([]string, error) {
+	tables := make([]string, 0)
+	rows, err := db.Query("SHOW TABLES")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var table string
+		rows.Scan(&table)
+		tables = append(tables, table)
+	}
+	return tables, nil
 }
 
 func getTableColumns(db *sql.DB, table string) ([]map[string]interface{}, error) {
