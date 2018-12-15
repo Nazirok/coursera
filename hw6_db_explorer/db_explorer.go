@@ -9,9 +9,12 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 
 	"encoding/json"
-		"net/http"
+	"net/http"
+	"strconv"
 	"strings"
+	"io/ioutil"
 	"fmt"
+	"reflect"
 )
 
 func NewDbExplorer(db *sql.DB) (*dbExplorer, error) {
@@ -47,7 +50,8 @@ func (d *dbExplorer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeResponse(w, resp{"error": "bad method"}, http.StatusInternalServerError)
 		}
 	} else {
-		p := strings.Split(r.URL.Path, "/")[1:]
+		trimPath := strings.TrimSuffix(r.URL.Path, "/")
+		p := strings.Split(trimPath, "/")[1:]
 		if !d.tableExist(p[0]) {
 			writeResponse(w, resp{"error": "unknown table"}, http.StatusNotFound)
 			return
@@ -55,6 +59,27 @@ func (d *dbExplorer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if len(p) == 1 && r.Method == http.MethodGet {
 			d.handleGetAll(w, r, p[0])
 			return
+		}
+		if len(p) == 2 && r.Method == http.MethodGet {
+			d.handleGetByID(w, p[0], p[1])
+			return
+		}
+		if len(p) == 1 && r.Method == http.MethodPut {
+			body := make(map[string]interface{})
+			defer r.Body.Close()
+			d, err := ioutil.ReadAll(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			err = json.Unmarshal(d, &body)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			fmt.Println(body)
+			fmt.Println(reflect.TypeOf(body["id"]))
+			d.handlePUT()
 		}
 	}
 }
@@ -89,16 +114,14 @@ func (d *dbExplorer) handleGetAll(w http.ResponseWriter, r *http.Request, table 
 	}
 	defer rows.Close()
 
-	columns, err := rows.Columns()
-	typ, _ := rows.ColumnTypes()
-	fmt.Println("COLUMN TYPES: ",typ[3].Name(), typ[3].ScanType())
+	columns, err := rows.ColumnTypes()
 	count := len(columns)
 	values := make([]interface{}, count)
 	scanArgs := make([]interface{}, count)
 	for i := range values {
 		scanArgs[i] = &values[i]
 	}
-	out := make([]map[string]interface{}, 0, 5)
+	out := make([]map[string]interface{}, 0)
 	for rows.Next() {
 		err = rows.Scan(scanArgs...)
 		if err != nil {
@@ -108,19 +131,17 @@ func (d *dbExplorer) handleGetAll(w http.ResponseWriter, r *http.Request, table 
 		entry := make(map[string]interface{})
 		for i, col := range columns {
 			v := values[i]
-			switch v.(type) {
-			case []byte:
-				entry[col] = string(v.([]byte))
-			case string:
-				entry[col] = v.(string)
-			case int:
-				entry[col] = v.(int)
-			case uint8:
-				entry[col] = v.(uint8)
-			case bool:
-				entry[col] = v.(bool)
-			case nil:
-				entry[col] = interface{}(nil)
+			if v == nil {
+				entry[col.Name()] = interface{}(nil)
+			} else {
+				switch col.ScanType().Name() {
+				case "int32":
+					s := string(v.([]byte))
+					n, _ := strconv.Atoi(s)
+					entry[col.Name()] = n
+				case "RawBytes":
+					entry[col.Name()] = string(v.([]byte))
+				}
 			}
 		}
 		out = append(out, entry)
@@ -131,6 +152,57 @@ func (d *dbExplorer) handleGetAll(w http.ResponseWriter, r *http.Request, table 
 		},
 	}
 	writeResponse(w, res, http.StatusOK)
+}
+
+func (d *dbExplorer) handleGetByID(w http.ResponseWriter, table string, id string) {
+	rows, err := d.DB.Query("SELECT * FROM " + table + " WHERE id=" + id)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	columns, err := rows.ColumnTypes()
+	count := len(columns)
+	values := make([]interface{}, count)
+	scanArgs := make([]interface{}, count)
+	for i := range values {
+		scanArgs[i] = &values[i]
+	}
+	for rows.Next() {
+		err = rows.Scan(scanArgs...)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		entry := make(map[string]interface{})
+		for i, col := range columns {
+			v := values[i]
+			if v == nil {
+				entry[col.Name()] = interface{}(nil)
+			} else {
+				switch col.ScanType().Name() {
+				case "int32":
+					s := string(v.([]byte))
+					n, _ := strconv.Atoi(s)
+					entry[col.Name()] = n
+				case "RawBytes":
+					entry[col.Name()] = string(v.([]byte))
+				}
+			}
+		}
+		res := resp{
+			"response": map[string]interface{}{
+				"record": entry,
+			},
+		}
+		writeResponse(w, res, http.StatusOK)
+		return
+	}
+	writeResponse(w, resp{"error": "record not found"}, http.StatusNotFound)
+}
+
+func (d *dbExplorer) handlePUT(w http.ResponseWriter, table string, data map[string]interface{}) {
+	
 }
 
 func getTables(db *sql.DB) ([]string, error) {

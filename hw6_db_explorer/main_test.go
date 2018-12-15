@@ -173,42 +173,42 @@ func TestApis(t *testing.T) {
 				},
 			},
 		},
-		//Case{
-		//	Path: "/items/1",
-		//	Result: CR{
-		//		"response": CR{
-		//			"record": CR{
-		//				"id":          1,
-		//				"title":       "database/sql",
-		//				"description": "Рассказать про базы данных",
-		//				"updated":     "rvasily",
-		//			},
-		//		},
-		//	},
-		//},
-		//Case{
-		//	Path:   "/items/100500",
-		//	Status: http.StatusNotFound,
-		//	Result: CR{
-		//		"error": "record not found",
-		//	},
-		//},
-		//
+		Case{
+			Path: "/items/1",
+			Result: CR{
+				"response": CR{
+					"record": CR{
+						"id":          1,
+						"title":       "database/sql",
+						"description": "Рассказать про базы данных",
+						"updated":     "rvasily",
+					},
+				},
+			},
+		},
+		Case{
+			Path:   "/items/100500",
+			Status: http.StatusNotFound,
+			Result: CR{
+				"error": "record not found",
+			},
+		},
+
 		//// тут идёт создание и редактирование
-		//Case{
-		//	Path:   "/items/",
-		//	Method: http.MethodPut,
-		//	Body: CR{
-		//		"id":          42, // auto increment primary key игнорируется при вставке
-		//		"title":       "db_crud",
-		//		"description": "",
-		//	},
-		//	Result: CR{
-		//		"response": CR{
-		//			"id": 3,
-		//		},
-		//	},
-		//},
+		Case{
+			Path:   "/items/",
+			Method: http.MethodPut,
+			Body: CR{
+				"id":          42, // auto increment primary key игнорируется при вставке
+				"title":       "db_crud",
+				"description": "",
+			},
+			Result: CR{
+				"response": CR{
+					"id": 3,
+				},
+			},
+		},
 		//// это пример хрупкого теста
 		//// если много раз вызывать один и тот же тест - записи будут добавляться
 		//// поэтому придётся сделать сброс базы каждый раз в PrepareTestData
