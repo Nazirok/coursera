@@ -29,7 +29,7 @@ type Case struct {
 }
 
 var (
-	client = &http.Client{Timeout: time.Second}
+	client = &http.Client{Timeout: 30 * time.Second}
 )
 
 func PrepareTestApis(db *sql.DB) {
@@ -105,110 +105,110 @@ func TestApis(t *testing.T) {
 	ts := httptest.NewServer(handler)
 
 	cases := []Case{
-		Case{
-			Path: "/", // список таблиц
-			Result: CR{
-				"response": CR{
-					"tables": []string{"items", "users"},
-				},
-			},
-		},
-		Case{
-			Path:   "/unknown_table",
-			Status: http.StatusNotFound,
-			Result: CR{
-				"error": "unknown table",
-			},
-		},
-		Case{
-			Path: "/items",
-			Result: CR{
-				"response": CR{
-					"records": []CR{
-						CR{
-							"id":          1,
-							"title":       "database/sql",
-							"description": "Рассказать про базы данных",
-							"updated":     "rvasily",
-						},
-						CR{
-							"id":          2,
-							"title":       "memcache",
-							"description": "Рассказать про мемкеш с примером использования",
-							"updated":     nil,
-						},
-					},
-				},
-			},
-		},
-		Case{
-			Path:  "/items",
-			Query: "limit=1",
-			Result: CR{
-				"response": CR{
-					"records": []CR{
-						CR{
-							"id":          1,
-							"title":       "database/sql",
-							"description": "Рассказать про базы данных",
-							"updated":     "rvasily",
-						},
-					},
-				},
-			},
-		},
-		Case{
-			Path:  "/items",
-			Query: "limit=1&offset=1",
-			Result: CR{
-				"response": CR{
-					"records": []CR{
-						CR{
-							"id":          2,
-							"title":       "memcache",
-							"description": "Рассказать про мемкеш с примером использования",
-							"updated":     nil,
-						},
-					},
-				},
-			},
-		},
-		Case{
-			Path: "/items/1",
-			Result: CR{
-				"response": CR{
-					"record": CR{
-						"id":          1,
-						"title":       "database/sql",
-						"description": "Рассказать про базы данных",
-						"updated":     "rvasily",
-					},
-				},
-			},
-		},
-		Case{
-			Path:   "/items/100500",
-			Status: http.StatusNotFound,
-			Result: CR{
-				"error": "record not found",
-			},
-		},
-
-		//// тут идёт создание и редактирование
-		Case{
-			Path:   "/items/",
-			Method: http.MethodPut,
-			Body: CR{
-				"id":          42, // auto increment primary key игнорируется при вставке
-				"title":       "db_crud",
-				"description": "",
-			},
-			Result: CR{
-				"response": CR{
-					"id": 3,
-				},
-			},
-		},
+		//Case{
+		//	Path: "/", // список таблиц
+		//	Result: CR{
+		//		"response": CR{
+		//			"tables": []string{"items", "users"},
+		//		},
+		//	},
+		//},
+		//Case{
+		//	Path:   "/unknown_table",
+		//	Status: http.StatusNotFound,
+		//	Result: CR{
+		//		"error": "unknown table",
+		//	},
+		//},
+		//Case{
+		//	Path: "/items",
+		//	Result: CR{
+		//		"response": CR{
+		//			"records": []CR{
+		//				CR{
+		//					"id":          1,
+		//					"title":       "database/sql",
+		//					"description": "Рассказать про базы данных",
+		//					"updated":     "rvasily",
+		//				},
+		//				CR{
+		//					"id":          2,
+		//					"title":       "memcache",
+		//					"description": "Рассказать про мемкеш с примером использования",
+		//					"updated":     nil,
+		//				},
+		//			},
+		//		},
+		//	},
+		//},
+		//Case{
+		//	Path:  "/items",
+		//	Query: "limit=1",
+		//	Result: CR{
+		//		"response": CR{
+		//			"records": []CR{
+		//				CR{
+		//					"id":          1,
+		//					"title":       "database/sql",
+		//					"description": "Рассказать про базы данных",
+		//					"updated":     "rvasily",
+		//				},
+		//			},
+		//		},
+		//	},
+		//},
+		//Case{
+		//	Path:  "/items",
+		//	Query: "limit=1&offset=1",
+		//	Result: CR{
+		//		"response": CR{
+		//			"records": []CR{
+		//				CR{
+		//					"id":          2,
+		//					"title":       "memcache",
+		//					"description": "Рассказать про мемкеш с примером использования",
+		//					"updated":     nil,
+		//				},
+		//			},
+		//		},
+		//	},
+		//},
+		//Case{
+		//	Path: "/items/1",
+		//	Result: CR{
+		//		"response": CR{
+		//			"record": CR{
+		//				"id":          1,
+		//				"title":       "database/sql",
+		//				"description": "Рассказать про базы данных",
+		//				"updated":     "rvasily",
+		//			},
+		//		},
+		//	},
+		//},
+		//Case{
+		//	Path:   "/items/100500",
+		//	Status: http.StatusNotFound,
+		//	Result: CR{
+		//		"error": "record not found",
+		//	},
+		//},
+		//
+		////// тут идёт создание и редактирование
+		//Case{
+		//	Path:   "/items/",
+		//	Method: http.MethodPut,
+		//	Body: CR{
+		//		"id":          42, // auto increment primary key игнорируется при вставке
+		//		"title":       "db_crud",
+		//		"description": "",
+		//	},
+		//	Result: CR{
+		//		"response": CR{
+		//			"id": 3,
+		//		},
+		//	},
+		//},
 		//// это пример хрупкого теста
 		//// если много раз вызывать один и тот же тест - записи будут добавляться
 		//// поэтому придётся сделать сброс базы каждый раз в PrepareTestData
@@ -378,24 +378,24 @@ func TestApis(t *testing.T) {
 		//		"error": "record not found",
 		//	},
 		//},
-		//
-		//// и немного по другой таблице
-		//Case{
-		//	Path: "/users/1",
-		//	Result: CR{
-		//		"response": CR{
-		//			"record": CR{
-		//				"user_id":  1,
-		//				"login":    "rvasily",
-		//				"password": "love",
-		//				"email":    "rvasily@example.com",
-		//				"info":     "none",
-		//				"updated":  nil,
-		//			},
-		//		},
-		//	},
-		//},
-		//
+
+		// и немного по другой таблице
+		Case{
+			Path: "/users/1",
+			Result: CR{
+				"response": CR{
+					"record": CR{
+						"user_id":  1,
+						"login":    "rvasily",
+						"password": "love",
+						"email":    "rvasily@example.com",
+						"info":     "none",
+						"updated":  nil,
+					},
+				},
+			},
+		},
+
 		//Case{
 		//	Path:   "/users/1",
 		//	Method: http.MethodPost,

@@ -8,13 +8,12 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 
+	"bytes"
 	"encoding/json"
-	"net/http"
-	"strconv"
-	"strings"
-	"io/ioutil"
 	"fmt"
-	"reflect"
+	"io/ioutil"
+	"net/http"
+	"strings"
 )
 
 func NewDbExplorer(db *sql.DB) (*dbExplorer, error) {
@@ -22,7 +21,7 @@ func NewDbExplorer(db *sql.DB) (*dbExplorer, error) {
 	if err != nil {
 		return nil, err
 	}
-	tablesData := make(map[string][]map[string]interface{})
+	tablesData := make(map[string]map[string]Field)
 	for _, table := range tables {
 		columns, err := getTableColumns(db, table)
 		if err != nil {
@@ -35,10 +34,18 @@ func NewDbExplorer(db *sql.DB) (*dbExplorer, error) {
 
 type dbExplorer struct {
 	DB     *sql.DB
-	Tables map[string][]map[string]interface{}
+	Tables map[string]map[string]Field
 }
 
 type resp map[string]interface{}
+
+type Field struct {
+	Name     sql.NullString
+	Type     sql.NullString
+	Pri      sql.NullBool
+	AutoInc  sql.NullBool
+	NullAble sql.NullBool
+}
 
 func (d *dbExplorer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -56,30 +63,54 @@ func (d *dbExplorer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeResponse(w, resp{"error": "unknown table"}, http.StatusNotFound)
 			return
 		}
+
 		if len(p) == 1 && r.Method == http.MethodGet {
 			d.handleGetAll(w, r, p[0])
 			return
 		}
+
 		if len(p) == 2 && r.Method == http.MethodGet {
 			d.handleGetByID(w, p[0], p[1])
 			return
 		}
+
 		if len(p) == 1 && r.Method == http.MethodPut {
 			body := make(map[string]interface{})
 			defer r.Body.Close()
-			d, err := ioutil.ReadAll(r.Body)
+			dat, err := ioutil.ReadAll(r.Body)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
-			err = json.Unmarshal(d, &body)
+			err = json.Unmarshal(dat, &body)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
-			fmt.Println(body)
-			fmt.Println(reflect.TypeOf(body["id"]))
-			d.handlePUT()
+			d.handlePUT(w, p[0], body)
+			return
+		}
+
+		if len(p) == 2 && r.Method == http.MethodPost {
+			body := make(map[string]interface{})
+			defer r.Body.Close()
+			dat, err := ioutil.ReadAll(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			err = json.Unmarshal(dat, &body)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			d.handlePOST(w, p[0], p[1], body)
+			return
+		}
+
+		if len(p) == 2 && r.Method == http.MethodDelete {
+			d.handleDELETE(w, p[0], p[1])
+			return
 		}
 	}
 }
@@ -107,8 +138,11 @@ func (d *dbExplorer) handleGetAll(w http.ResponseWriter, r *http.Request, table 
 	if offset == "" {
 		offset = "0"
 	}
-	rows, err := d.DB.Query("SELECT * FROM " + table + " LIMIT " + limit + " OFFSET " + offset)
+	query := fmt.Sprintf("SELECT * FROM %s LIMIT ? OFFSET ?", table)
+	//rows, err := d.DB.Query("SELECT * FROM " + table + " LIMIT " + limit + " OFFSET " + offset)
+	rows, err := d.DB.Query(query, limit, offset)
 	if err != nil {
+		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -136,9 +170,7 @@ func (d *dbExplorer) handleGetAll(w http.ResponseWriter, r *http.Request, table 
 			} else {
 				switch col.ScanType().Name() {
 				case "int32":
-					s := string(v.([]byte))
-					n, _ := strconv.Atoi(s)
-					entry[col.Name()] = n
+					entry[col.Name()] = v.(int64)
 				case "RawBytes":
 					entry[col.Name()] = string(v.([]byte))
 				}
@@ -155,7 +187,8 @@ func (d *dbExplorer) handleGetAll(w http.ResponseWriter, r *http.Request, table 
 }
 
 func (d *dbExplorer) handleGetByID(w http.ResponseWriter, table string, id string) {
-	rows, err := d.DB.Query("SELECT * FROM " + table + " WHERE id=" + id)
+	query := fmt.Sprintf("SELECT * FROM %s WHERE id=?", table)
+	rows, err := d.DB.Query(query, id)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -182,9 +215,7 @@ func (d *dbExplorer) handleGetByID(w http.ResponseWriter, table string, id strin
 			} else {
 				switch col.ScanType().Name() {
 				case "int32":
-					s := string(v.([]byte))
-					n, _ := strconv.Atoi(s)
-					entry[col.Name()] = n
+					entry[col.Name()] = v.(int64)
 				case "RawBytes":
 					entry[col.Name()] = string(v.([]byte))
 				}
@@ -202,7 +233,115 @@ func (d *dbExplorer) handleGetByID(w http.ResponseWriter, table string, id strin
 }
 
 func (d *dbExplorer) handlePUT(w http.ResponseWriter, table string, data map[string]interface{}) {
-	
+	var insert, values string
+	insert += "INSERT INTO " + table + " ("
+	values += " VALUES ("
+	vals := make([]interface{}, 0)
+	for k, v := range data {
+		f, ok := d.Tables[table][k]
+		if !ok || f.Pri.Bool || f.AutoInc.Bool {
+			continue
+		}
+		switch v.(type) {
+		case int, int32, float32, float64:
+			if f.Type.String != "int(11)" {
+				writeResponse(w, resp{"error": fmt.Sprintf("field %s have invalid type", k)}, http.StatusBadRequest)
+				return
+			}
+		case string:
+			if !(f.Type.String == "varchar(255)" || f.Type.String == "text") {
+				writeResponse(w, resp{"error": fmt.Sprintf("field %s have invalid type", k)}, http.StatusBadRequest)
+				return
+			}
+		}
+		insert += "`" + k + "`,"
+		values += "?,"
+		vals = append(vals, v)
+	}
+	insert = strings.TrimSuffix(insert, ",") + ")"
+	values = strings.TrimSuffix(values, ",") + ")"
+	result, err := d.DB.Exec(insert+values, vals...)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	lastID, err := result.LastInsertId()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	writeResponse(w, resp{"response": map[string]interface{}{
+		"id": lastID,
+	}}, http.StatusOK)
+}
+
+func (d *dbExplorer) handlePOST(w http.ResponseWriter, table, id string, data map[string]interface{}) {
+	var buf bytes.Buffer
+	buf.WriteString("UPDATE " + table + " SET ")
+	vals := make([]interface{}, 0)
+	for k, v := range data {
+		f, ok := d.Tables[table][k]
+		if f.Pri.Bool {
+			writeResponse(w, resp{"error": fmt.Sprintf("field %s have invalid type", k)}, http.StatusBadRequest)
+			return
+		}
+		if !f.NullAble.Bool && v == nil {
+			writeResponse(w, resp{"error": fmt.Sprintf("field %s have invalid type", k)}, http.StatusBadRequest)
+			return
+		}
+		if !ok || f.AutoInc.Bool {
+			continue
+		}
+		switch v.(type) {
+		case int, int32, float32, float64:
+			if f.Type.String != "int(11)" {
+				writeResponse(w, resp{"error": fmt.Sprintf("field %s have invalid type", k)}, http.StatusBadRequest)
+				return
+			}
+		case string:
+			if !(f.Type.String == "varchar(255)" || f.Type.String == "text") {
+				writeResponse(w, resp{"error": fmt.Sprintf("field %s have invalid type", k)}, http.StatusBadRequest)
+				return
+			}
+		}
+		buf.WriteString(fmt.Sprintf("%s=?,", k))
+		vals = append(vals, v)
+	}
+	vals = append(vals, id)
+	query := strings.TrimSuffix(buf.String(), ",") + " WHERE id=?"
+	result, err := d.DB.Exec(query, vals...)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	writeResponse(w, resp{"response": map[string]interface{}{
+		"updated": affected,
+	}}, http.StatusOK)
+}
+
+func (d *dbExplorer) handleDELETE(w http.ResponseWriter, table, id string) {
+	query := fmt.Sprintf("DELETE FROM %s WHERE id=?", table)
+	result, err := d.DB.Exec(query, id)
+	if err != nil {
+		fmt.Println("EXEC:", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		fmt.Println("AFFECTED:", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	writeResponse(w, resp{"response": map[string]interface{}{
+		"deleted": affected,
+	}}, http.StatusOK)
+
 }
 
 func getTables(db *sql.DB) ([]string, error) {
@@ -221,13 +360,13 @@ func getTables(db *sql.DB) ([]string, error) {
 	return tables, nil
 }
 
-func getTableColumns(db *sql.DB, table string) ([]map[string]interface{}, error) {
+func getTableColumns(db *sql.DB, table string) (map[string]Field, error) {
 	rows, err := db.Query("SHOW FULL COLUMNS FROM " + table)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]map[string]interface{}, 0)
+	out := make(map[string]Field, 0)
 
 	columns, err := rows.Columns()
 	if err != nil {
@@ -246,18 +385,24 @@ func getTableColumns(db *sql.DB, table string) ([]map[string]interface{}, error)
 		if err != nil {
 			return nil, err
 		}
-		entry := make(map[string]interface{})
+		entry := Field{}
 		for i, col := range columns {
 			v := values[i]
-
-			b, ok := v.([]byte)
-			if ok {
-				entry[col] = string(b)
-			} else {
-				entry[col] = v
+			b, _ := v.([]byte)
+			switch col {
+			case "Field":
+				entry.Name.Scan(b)
+			case "Type":
+				entry.Type.Scan(b)
+			case "Null":
+				entry.NullAble.Scan(string(b) == "YES")
+			case "Key":
+				entry.Pri.Scan(string(b) == "PRI")
+			case "Extra":
+				entry.AutoInc.Scan(string(b) == "auto_increment")
 			}
 		}
-		out = append(out, entry)
+		out[entry.Name.String] = entry
 	}
 	return out, nil
 }
