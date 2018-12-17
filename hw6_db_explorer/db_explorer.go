@@ -70,8 +70,12 @@ func (d *dbExplorer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if len(p) == 2 && r.Method == http.MethodGet {
-			d.handleGetByID(w, p[0], p[1])
-			return
+			for _, f := range d.Tables[p[0]] {
+				if f.Pri.Bool {
+					d.handleGetByID(w, p[0], f.Name.String, p[1])
+					return
+				}
+			}
 		}
 
 		if len(p) == 1 && r.Method == http.MethodPut {
@@ -104,13 +108,17 @@ func (d *dbExplorer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
-			d.handlePOST(w, p[0], p[1], body)
-			return
+			for _, f := range d.Tables[p[0]] {
+				d.handlePOST(w, p[0], f.Name.String, p[1], body)
+				return
+			}
 		}
 
 		if len(p) == 2 && r.Method == http.MethodDelete {
-			d.handleDELETE(w, p[0], p[1])
-			return
+			for _, f := range d.Tables[p[0]] {
+				d.handleDELETE(w, p[0], f.Name.String, p[1])
+				return
+			}
 		}
 	}
 }
@@ -139,7 +147,6 @@ func (d *dbExplorer) handleGetAll(w http.ResponseWriter, r *http.Request, table 
 		offset = "0"
 	}
 	query := fmt.Sprintf("SELECT * FROM %s LIMIT ? OFFSET ?", table)
-	//rows, err := d.DB.Query("SELECT * FROM " + table + " LIMIT " + limit + " OFFSET " + offset)
 	rows, err := d.DB.Query(query, limit, offset)
 	if err != nil {
 		fmt.Println(err)
@@ -186,8 +193,8 @@ func (d *dbExplorer) handleGetAll(w http.ResponseWriter, r *http.Request, table 
 	writeResponse(w, res, http.StatusOK)
 }
 
-func (d *dbExplorer) handleGetByID(w http.ResponseWriter, table string, id string) {
-	query := fmt.Sprintf("SELECT * FROM %s WHERE id=?", table)
+func (d *dbExplorer) handleGetByID(w http.ResponseWriter, table string, pri, id string) {
+	query := fmt.Sprintf("SELECT * FROM %s WHERE %s=?", table, pri)
 	rows, err := d.DB.Query(query, id)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -275,7 +282,7 @@ func (d *dbExplorer) handlePUT(w http.ResponseWriter, table string, data map[str
 	}}, http.StatusOK)
 }
 
-func (d *dbExplorer) handlePOST(w http.ResponseWriter, table, id string, data map[string]interface{}) {
+func (d *dbExplorer) handlePOST(w http.ResponseWriter, table, pri, id string, data map[string]interface{}) {
 	var buf bytes.Buffer
 	buf.WriteString("UPDATE " + table + " SET ")
 	vals := make([]interface{}, 0)
@@ -308,7 +315,7 @@ func (d *dbExplorer) handlePOST(w http.ResponseWriter, table, id string, data ma
 		vals = append(vals, v)
 	}
 	vals = append(vals, id)
-	query := strings.TrimSuffix(buf.String(), ",") + " WHERE id=?"
+	query := strings.TrimSuffix(buf.String(), ",") + " WHERE " + pri + "=?"
 	result, err := d.DB.Exec(query, vals...)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -324,8 +331,8 @@ func (d *dbExplorer) handlePOST(w http.ResponseWriter, table, id string, data ma
 	}}, http.StatusOK)
 }
 
-func (d *dbExplorer) handleDELETE(w http.ResponseWriter, table, id string) {
-	query := fmt.Sprintf("DELETE FROM %s WHERE id=?", table)
+func (d *dbExplorer) handleDELETE(w http.ResponseWriter, table, pri, id string) {
+	query := fmt.Sprintf("DELETE FROM %s WHERE %s=?", table, pri)
 	result, err := d.DB.Exec(query, id)
 	if err != nil {
 		fmt.Println("EXEC:", err)

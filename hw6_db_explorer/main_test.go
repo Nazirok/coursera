@@ -29,7 +29,7 @@ type Case struct {
 }
 
 var (
-	client = &http.Client{Timeout: 30 * time.Second}
+	client = &http.Client{Timeout: 300 * time.Second}
 )
 
 func PrepareTestApis(db *sql.DB) {
@@ -396,77 +396,77 @@ func TestApis(t *testing.T) {
 			},
 		},
 
-		//Case{
-		//	Path:   "/users/1",
-		//	Method: http.MethodPost,
-		//	Body: CR{
-		//		"info":    "try update",
-		//		"updated": "now",
-		//	},
-		//	Result: CR{
-		//		"response": CR{
-		//			"updated": 1,
-		//		},
-		//	},
-		//},
-		//Case{
-		//	Path: "/users/1",
-		//	Result: CR{
-		//		"response": CR{
-		//			"record": CR{
-		//				"user_id":  1,
-		//				"login":    "rvasily",
-		//				"password": "love",
-		//				"email":    "rvasily@example.com",
-		//				"info":     "try update",
-		//				"updated":  "now",
-		//			},
-		//		},
-		//	},
-		//},
-		//// ошибки
-		//Case{
-		//	Path:   "/users/1",
-		//	Method: http.MethodPost,
-		//	Status: http.StatusBadRequest,
-		//	Body: CR{
-		//		"user_id": 1, // primary key нельзя обновлять у существующей записи
-		//	},
-		//	Result: CR{
-		//		"error": "field user_id have invalid type",
-		//	},
-		//},
-		//// не забываем про sql-инъекции
-		//Case{
-		//	Path:   "/users/",
-		//	Method: http.MethodPut,
-		//	Body: CR{
-		//		"user_id":    2,
-		//		"login":      "qwerty'",
-		//		"password":   "love\"",
-		//		"unkn_field": "love",
-		//	},
-		//	Result: CR{
-		//		"response": CR{
-		//			"user_id": 2,
-		//		},
-		//	},
-		//},
-		//Case{
-		//	Path: "/users/2",
-		//	Result: CR{
-		//		"response": CR{
-		//			"record": CR{
-		//				"user_id":  2,
-		//				"login":    "qwerty'",
-		//				"password": "love\"",
-		//				"email":    "",
-		//				"info":     "",
-		//				"updated":  nil,
-		//			},
-		//		},
-		//	},
-		//},
+		Case{
+			Path:   "/users/1",
+			Method: http.MethodPost,
+			Body: CR{
+				"info":    "try update",
+				"updated": "now",
+			},
+			Result: CR{
+				"response": CR{
+					"updated": 1,
+				},
+			},
+		},
+		Case{
+			Path: "/users/1",
+			Result: CR{
+				"response": CR{
+					"record": CR{
+						"user_id":  1,
+						"login":    "rvasily",
+						"password": "love",
+						"email":    "rvasily@example.com",
+						"info":     "try update",
+						"updated":  "now",
+					},
+				},
+			},
+		},
+		// ошибки
+		Case{
+			Path:   "/users/1",
+			Method: http.MethodPost,
+			Status: http.StatusBadRequest,
+			Body: CR{
+				"user_id": 1, // primary key нельзя обновлять у существующей записи
+			},
+			Result: CR{
+				"error": "field user_id have invalid type",
+			},
+		},
+		// не забываем про sql-инъекции
+		Case{
+			Path:   "/users/",
+			Method: http.MethodPut,
+			Body: CR{
+				"user_id":    2,
+				"login":      "qwerty'",
+				"password":   "love\"",
+				"unkn_field": "love",
+			},
+			Result: CR{
+				"response": CR{
+					"user_id": 2,
+				},
+			},
+		},
+		Case{
+			Path: "/users/2",
+			Result: CR{
+				"response": CR{
+					"record": CR{
+						"user_id":  2,
+						"login":    "qwerty'",
+						"password": "love\"",
+						"email":    "",
+						"info":     "",
+						"updated":  nil,
+					},
+				},
+			},
+		},
 		//// тут тоже возможна sql-инъекция
 		//// если пришло не число на вход - берём дефолтное значене для лимита-оффсета
 		//Case{
