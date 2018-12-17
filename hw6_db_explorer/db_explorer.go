@@ -14,6 +14,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"strconv"
 )
 
 func NewDbExplorer(db *sql.DB) (*dbExplorer, error) {
@@ -92,8 +93,13 @@ func (d *dbExplorer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
-			d.handlePUT(w, p[0], body)
-			return
+			for _, f := range d.Tables[p[0]] {
+				if f.Pri.Bool {
+					d.handlePUT(w, p[0], f.Name.String, body)
+					return
+				}
+			}
+
 		}
 
 		if len(p) == 2 && r.Method == http.MethodPost {
@@ -110,15 +116,19 @@ func (d *dbExplorer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			for _, f := range d.Tables[p[0]] {
-				d.handlePOST(w, p[0], f.Name.String, p[1], body)
-				return
+				if f.Pri.Bool {
+					d.handlePOST(w, p[0], f.Name.String, p[1], body)
+					return
+				}
 			}
 		}
 
 		if len(p) == 2 && r.Method == http.MethodDelete {
 			for _, f := range d.Tables[p[0]] {
-				d.handleDELETE(w, p[0], f.Name.String, p[1])
-				return
+				if f.Pri.Bool {
+					d.handleDELETE(w, p[0], f.Name.String, p[1])
+					return
+				}
 			}
 		}
 	}
@@ -140,13 +150,17 @@ func (d *dbExplorer) handleBase(w http.ResponseWriter, r *http.Request) {
 func (d *dbExplorer) handleGetAll(w http.ResponseWriter, r *http.Request, table string) {
 	var limit, offset string
 	limit = r.URL.Query().Get("limit")
-	if limit == "" {
+	_, err := strconv.Atoi(limit)
+	if limit == "" || err != nil {
 		limit = "5"
 	}
+
 	offset = r.URL.Query().Get("offset")
-	if offset == "" {
+	_, err = strconv.Atoi(offset)
+	if offset == "" || err != nil {
 		offset = "0"
 	}
+
 	query := fmt.Sprintf("SELECT * FROM %s LIMIT ? OFFSET ?", table)
 	rows, err := d.DB.Query(query, limit, offset)
 	if err != nil {
@@ -240,80 +254,42 @@ func (d *dbExplorer) handleGetByID(w http.ResponseWriter, table string, pri, id 
 	writeResponse(w, resp{"error": "record not found"}, http.StatusNotFound)
 }
 
-func (d *dbExplorer) handlePUT(w http.ResponseWriter, table string, data map[string]interface{}) {
-	var insert, values string
-	insert += "INSERT INTO " + table + " ("
-	values += " VALUES ("
-	vals := make([]interface{}, 0)
-	for k, v := range data {
-		f, ok := d.Tables[table][k]
-		if !ok || f.Pri.Bool || f.AutoInc.Bool {
-			continue
-		}
-		switch v.(type) {
-		case int, int32, float32, float64:
-			if f.Type.String != "int(11)" {
-				writeResponse(w, resp{"error": fmt.Sprintf("field %s have invalid type", k)}, http.StatusBadRequest)
-				return
-			}
-		case string:
-			if !(f.Type.String == "varchar(255)" || f.Type.String == "text") {
-				writeResponse(w, resp{"error": fmt.Sprintf("field %s have invalid type", k)}, http.StatusBadRequest)
-				return
-			}
-		}
-		insert += "`" + k + "`,"
-		values += "?,"
-		vals = append(vals, v)
-	}
-	insert = strings.TrimSuffix(insert, ",") + ")"
-	values = strings.TrimSuffix(values, ",") + ")"
-	result, err := d.DB.Exec(insert+values, vals...)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	lastID, err := result.LastInsertId()
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	writeResponse(w, resp{"response": map[string]interface{}{
-		"id": lastID,
-	}}, http.StatusOK)
-}
-
-func (d *dbExplorer) handlePUT(w http.ResponseWriter, table string, data map[string]interface{}) {
+func (d *dbExplorer) handlePUT(w http.ResponseWriter, table, pri string, data map[string]interface{}) {
 	var insert, values string
 	insert += "INSERT INTO " + table + " ("
 	values += " VALUES ("
 	vals := make([]interface{}, 0)
 	for k, v  := range d.Tables[table] {
+		inField, ok := data[k]
+		if ok {
+			if v.Pri.Bool || v.AutoInc.Bool {
+				continue
+			}
+			switch inField.(type) {
+			case int, int32, float32, float64:
+				if v.Type.String != "int(11)" {
+					writeResponse(w, resp{"error": fmt.Sprintf("field %s have invalid type", k)}, http.StatusBadRequest)
+					return
+				}
+			case string:
+				if !(v.Type.String == "varchar(255)" || v.Type.String == "text") {
+					writeResponse(w, resp{"error": fmt.Sprintf("field %s have invalid type", k)}, http.StatusBadRequest)
+					return
+				}
+			}
+			insert += "`" + k + "`,"
+			values += "?,"
+			vals = append(vals, inField)
+		} else {
+			if !v.NullAble.Bool && v.Default == nil {
+				insert += "`" + k + "`,"
+				values += "?,"
+				vals = append(vals, "")
+			}
+		}
 
 	}
 
-
-	for k, v := range data {
-		f, ok := d.Tables[table][k]
-		if !ok || f.Pri.Bool || f.AutoInc.Bool {
-			continue
-		}
-		switch v.(type) {
-		case int, int32, float32, float64:
-			if f.Type.String != "int(11)" {
-				writeResponse(w, resp{"error": fmt.Sprintf("field %s have invalid type", k)}, http.StatusBadRequest)
-				return
-			}
-		case string:
-			if !(f.Type.String == "varchar(255)" || f.Type.String == "text") {
-				writeResponse(w, resp{"error": fmt.Sprintf("field %s have invalid type", k)}, http.StatusBadRequest)
-				return
-			}
-		}
-		insert += "`" + k + "`,"
-		values += "?,"
-		vals = append(vals, v)
-	}
 	insert = strings.TrimSuffix(insert, ",") + ")"
 	values = strings.TrimSuffix(values, ",") + ")"
 	result, err := d.DB.Exec(insert+values, vals...)
@@ -327,7 +303,7 @@ func (d *dbExplorer) handlePUT(w http.ResponseWriter, table string, data map[str
 		return
 	}
 	writeResponse(w, resp{"response": map[string]interface{}{
-		"id": lastID,
+		pri: lastID,
 	}}, http.StatusOK)
 }
 
@@ -481,5 +457,3 @@ func (d *dbExplorer) tableExist(table string) bool {
 	_, ok := d.Tables[table]
 	return ok
 }
-
-// https://play.golang.org/p/kwc6sTg0SG1
