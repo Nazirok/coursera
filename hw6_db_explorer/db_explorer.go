@@ -45,6 +45,7 @@ type Field struct {
 	Pri      sql.NullBool
 	AutoInc  sql.NullBool
 	NullAble sql.NullBool
+	Default  interface{}
 }
 
 func (d *dbExplorer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -282,6 +283,54 @@ func (d *dbExplorer) handlePUT(w http.ResponseWriter, table string, data map[str
 	}}, http.StatusOK)
 }
 
+func (d *dbExplorer) handlePUT(w http.ResponseWriter, table string, data map[string]interface{}) {
+	var insert, values string
+	insert += "INSERT INTO " + table + " ("
+	values += " VALUES ("
+	vals := make([]interface{}, 0)
+	for k, v  := range d.Tables[table] {
+
+	}
+
+
+	for k, v := range data {
+		f, ok := d.Tables[table][k]
+		if !ok || f.Pri.Bool || f.AutoInc.Bool {
+			continue
+		}
+		switch v.(type) {
+		case int, int32, float32, float64:
+			if f.Type.String != "int(11)" {
+				writeResponse(w, resp{"error": fmt.Sprintf("field %s have invalid type", k)}, http.StatusBadRequest)
+				return
+			}
+		case string:
+			if !(f.Type.String == "varchar(255)" || f.Type.String == "text") {
+				writeResponse(w, resp{"error": fmt.Sprintf("field %s have invalid type", k)}, http.StatusBadRequest)
+				return
+			}
+		}
+		insert += "`" + k + "`,"
+		values += "?,"
+		vals = append(vals, v)
+	}
+	insert = strings.TrimSuffix(insert, ",") + ")"
+	values = strings.TrimSuffix(values, ",") + ")"
+	result, err := d.DB.Exec(insert+values, vals...)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	lastID, err := result.LastInsertId()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	writeResponse(w, resp{"response": map[string]interface{}{
+		"id": lastID,
+	}}, http.StatusOK)
+}
+
 func (d *dbExplorer) handlePOST(w http.ResponseWriter, table, pri, id string, data map[string]interface{}) {
 	var buf bytes.Buffer
 	buf.WriteString("UPDATE " + table + " SET ")
@@ -396,6 +445,7 @@ func getTableColumns(db *sql.DB, table string) (map[string]Field, error) {
 		for i, col := range columns {
 			v := values[i]
 			b, _ := v.([]byte)
+
 			switch col {
 			case "Field":
 				entry.Name.Scan(b)
@@ -407,6 +457,8 @@ func getTableColumns(db *sql.DB, table string) (map[string]Field, error) {
 				entry.Pri.Scan(string(b) == "PRI")
 			case "Extra":
 				entry.AutoInc.Scan(string(b) == "auto_increment")
+			case "Default":
+				entry.Default = v
 			}
 		}
 		out[entry.Name.String] = entry
