@@ -74,7 +74,7 @@ func TestServerStartStop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cant start server again: %v", err)
 	}
-	wait(1)
+	//wait(1)
 	finish()
 	wait(1)
 }
