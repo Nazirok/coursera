@@ -5,6 +5,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"net"
+	"encoding/json"
 )
 
 // тут вы пишете код
@@ -27,6 +28,11 @@ func NewBizService() *BizService {
 }
 
 func StartMyMicroservice(ctx context.Context, conn string, acl string) error {
+	access, err := parseACL(acl)
+	if err != nil {
+		return err
+	}
+	fmt.Println(access)
 	lis, err := net.Listen("tcp", conn)
 	if err != nil {
 		fmt.Errorf("can`t listen port %s", err)
@@ -63,4 +69,13 @@ func (b *BizService) Add(context.Context, *Nothing) (*Nothing, error) {
 
 func (b *BizService) Test(context.Context, *Nothing) (*Nothing, error) {
 	return &Nothing{}, nil
+}
+
+func parseACL(data string) (map[string][]string, error) {
+	out := make(map[string][]string)
+	err := json.Unmarshal([]byte(data), &out)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
