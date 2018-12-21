@@ -3,11 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net"
+
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"net"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -51,7 +52,11 @@ func (m *MicroService) authInterceptor(
 	handler grpc.UnaryHandler,
 ) (interface{}, error) {
 	md, _ := metadata.FromIncomingContext(ctx)
+	fmt.Println(md)
 	consumer := md.Get("consumer")
+	if len(consumer) == 0 {
+		return nil, status.Error(codes.Unauthenticated, "consumer not found")
+	}
 	list, ok := m.acl[consumer[0]]
 	if !ok {
 		return nil, status.Error(codes.Unauthenticated, "unknown consumer")
