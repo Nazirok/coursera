@@ -52,7 +52,6 @@ func (m *MicroService) authInterceptor(
 	handler grpc.UnaryHandler,
 ) (interface{}, error) {
 	md, _ := metadata.FromIncomingContext(ctx)
-	fmt.Println(md)
 	consumer := md.Get("consumer")
 	if len(consumer) == 0 {
 		return nil, status.Error(codes.Unauthenticated, "consumer not found")
@@ -61,7 +60,10 @@ func (m *MicroService) authInterceptor(
 	if !ok {
 		return nil, status.Error(codes.Unauthenticated, "unknown consumer")
 	}
-	fmt.Println(list)
+	if !allowedMethod(info.FullMethod, list) {
+		return nil, status.Error(codes.Unauthenticated, "method not allowed")
+	}
+	fmt.Println(info.FullMethod)
 	reply, err := handler(ctx, req)
 	if err != nil {
 		return nil, err
@@ -122,4 +124,13 @@ func parseACL(data string) (map[string][]string, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+func allowedMethod(method string, list []string) bool {
+	for _, m := range list {
+		if m == method {
+			return true
+		}
+	}
+	return false
 }
