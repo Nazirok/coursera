@@ -10,6 +10,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"strings"
+
 )
 
 // тут вы пишете код
@@ -26,6 +28,11 @@ type (
 	}
 
 	BizService struct {
+	}
+
+	AClStore struct {
+		service string
+		method  string
 	}
 )
 
@@ -63,12 +70,21 @@ func (m *MicroService) authInterceptor(
 	if !allowedMethod(info.FullMethod, list) {
 		return nil, status.Error(codes.Unauthenticated, "method not allowed")
 	}
-	fmt.Println(info.FullMethod)
+	fmt.Println(req)
 	reply, err := handler(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 	return reply, nil
+}
+
+func (m *MicroService) streamAuthInterceptor (
+	srv interface{},
+	ss grpc.ServerStream,
+	info *grpc.StreamServerInfo,
+	handler grpc.StreamHandler,
+) error {
+
 }
 
 func StartMyMicroservice(ctx context.Context, conn string, acl string) error {
@@ -84,6 +100,7 @@ func StartMyMicroservice(ctx context.Context, conn string, acl string) error {
 
 	server := grpc.NewServer(
 		grpc.UnaryInterceptor(micro.authInterceptor),
+		grpc.StreamInterceptor(),
 	)
 	RegisterAdminServer(server, micro.GetAdminService())
 	RegisterBizServer(server, micro.GetBizService())
@@ -98,6 +115,7 @@ func StartMyMicroservice(ctx context.Context, conn string, acl string) error {
 }
 
 func (s *AdminService) Logging(n *Nothing, out Admin_LoggingServer) error {
+	out.SendMsg(status.Error(codes.Unauthenticated, "method not allowed"))
 	return nil
 }
 
@@ -128,7 +146,9 @@ func parseACL(data string) (map[string][]string, error) {
 
 func allowedMethod(method string, list []string) bool {
 	for _, m := range list {
-		if m == method {
+		parts := strings.Split(m, "/")[1:]
+		methodParts := strings.Split(method, "/")[1:]
+		if parts[0] == methodParts[0] && (parts[1] == methodParts[1] || parts[1] == "*")  {
 			return true
 		}
 	}
