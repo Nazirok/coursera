@@ -58,24 +58,11 @@ func (m *MicroService) authInterceptor(
 	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler,
 ) (interface{}, error) {
-	md, _ := metadata.FromIncomingContext(ctx)
-	consumer := md.Get("consumer")
-	if len(consumer) == 0 {
-		return nil, status.Error(codes.Unauthenticated, "consumer not found")
-	}
-	list, ok := m.acl[consumer[0]]
-	if !ok {
-		return nil, status.Error(codes.Unauthenticated, "unknown consumer")
-	}
-	if !allowedMethod(info.FullMethod, list) {
-		return nil, status.Error(codes.Unauthenticated, "method not allowed")
-	}
-	fmt.Println(req)
-	reply, err := handler(ctx, req)
+	err := m.authorize(ctx, info.FullMethod)
 	if err != nil {
 		return nil, err
 	}
-	return reply, nil
+	return handler(ctx, req)
 }
 
 func (m *MicroService) streamAuthInterceptor (
@@ -84,7 +71,27 @@ func (m *MicroService) streamAuthInterceptor (
 	info *grpc.StreamServerInfo,
 	handler grpc.StreamHandler,
 ) error {
+	err := m.authorize(ss.Context(), info.FullMethod)
+	if err != nil {
+		return err
+	}
+	return handler(srv, ss)
+}
 
+func (m *MicroService) authorize(ctx context.Context, method string) error {
+	md, _ := metadata.FromIncomingContext(ctx)
+	consumer := md.Get("consumer")
+	if len(consumer) == 0 {
+		return status.Error(codes.Unauthenticated, "consumer not found")
+	}
+	list, ok := m.acl[consumer[0]]
+	if !ok {
+		return status.Error(codes.Unauthenticated, "unknown consumer")
+	}
+	if !allowedMethod(method, list) {
+		return status.Error(codes.Unauthenticated, "method not allowed")
+	}
+	return nil
 }
 
 func StartMyMicroservice(ctx context.Context, conn string, acl string) error {
@@ -100,7 +107,7 @@ func StartMyMicroservice(ctx context.Context, conn string, acl string) error {
 
 	server := grpc.NewServer(
 		grpc.UnaryInterceptor(micro.authInterceptor),
-		grpc.StreamInterceptor(),
+		grpc.StreamInterceptor(micro.streamAuthInterceptor),
 	)
 	RegisterAdminServer(server, micro.GetAdminService())
 	RegisterBizServer(server, micro.GetBizService())
