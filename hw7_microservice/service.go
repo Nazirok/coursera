@@ -10,8 +10,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"io"
 	"strings"
-
 )
 
 // тут вы пишете код
@@ -25,21 +25,17 @@ type (
 	}
 
 	AdminService struct {
+		logChan chan *Event
 	}
 
 	BizService struct {
-	}
-
-	AClStore struct {
-		service string
-		method  string
 	}
 )
 
 func NewMicroService(acl map[string][]string) *MicroService {
 	return &MicroService{
 		acl:   acl,
-		admin: &AdminService{},
+		admin: &AdminService{logChan: make(chan *Event, 100)},
 		biz:   &BizService{},
 	}
 }
@@ -58,40 +54,55 @@ func (m *MicroService) authInterceptor(
 	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler,
 ) (interface{}, error) {
-	err := m.authorize(ctx, info.FullMethod)
+	e, err := m.authorize(ctx, info.FullMethod)
 	if err != nil {
 		return nil, err
 	}
+	m.admin.writeLog(e)
 	return handler(ctx, req)
 }
 
-func (m *MicroService) streamAuthInterceptor (
+func (m *MicroService) streamAuthInterceptor(
 	srv interface{},
 	ss grpc.ServerStream,
 	info *grpc.StreamServerInfo,
 	handler grpc.StreamHandler,
 ) error {
-	err := m.authorize(ss.Context(), info.FullMethod)
+	e, err := m.authorize(ss.Context(), info.FullMethod)
 	if err != nil {
 		return err
 	}
+	m.admin.writeLog(e)
 	return handler(srv, ss)
 }
 
-func (m *MicroService) authorize(ctx context.Context, method string) error {
+func (m *MicroService) authorize(ctx context.Context, method string) (*Event, error) {
 	md, _ := metadata.FromIncomingContext(ctx)
 	consumer := md.Get("consumer")
 	if len(consumer) == 0 {
-		return status.Error(codes.Unauthenticated, "consumer not found")
+		return nil, status.Error(codes.Unauthenticated, "consumer not found")
 	}
 	list, ok := m.acl[consumer[0]]
 	if !ok {
-		return status.Error(codes.Unauthenticated, "unknown consumer")
+		return nil, status.Error(codes.Unauthenticated, "unknown consumer")
 	}
 	if !allowedMethod(method, list) {
-		return status.Error(codes.Unauthenticated, "method not allowed")
+		return nil, status.Error(codes.Unauthenticated, "method not allowed")
 	}
-	return nil
+	return &Event{
+		Timestamp: 0,
+		Host:      "127.0.0.1:8089",
+		Consumer:  consumer[0],
+		Method:    method,
+	}, nil
+}
+
+func (a *AdminService) writeLog(e *Event) {
+	select {
+	case a.logChan <- e:
+	default:
+		return
+	}
 }
 
 func StartMyMicroservice(ctx context.Context, conn string, acl string) error {
@@ -121,12 +132,21 @@ func StartMyMicroservice(ctx context.Context, conn string, acl string) error {
 	return nil
 }
 
-func (s *AdminService) Logging(n *Nothing, out Admin_LoggingServer) error {
-	out.SendMsg(status.Error(codes.Unauthenticated, "method not allowed"))
+func (a *AdminService) Logging(n *Nothing, out Admin_LoggingServer) error {
+	for e := range a.logChan {
+		err := out.Send(e)
+		if err == io.EOF {
+			fmt.Println("exit EOF")
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-func (s *AdminService) Statistics(interval *StatInterval, out Admin_StatisticsServer) error {
+func (a *AdminService) Statistics(interval *StatInterval, out Admin_StatisticsServer) error {
 	return nil
 }
 
@@ -155,7 +175,7 @@ func allowedMethod(method string, list []string) bool {
 	for _, m := range list {
 		parts := strings.Split(m, "/")[1:]
 		methodParts := strings.Split(method, "/")[1:]
-		if parts[0] == methodParts[0] && (parts[1] == methodParts[1] || parts[1] == "*")  {
+		if parts[0] == methodParts[0] && (parts[1] == methodParts[1] || parts[1] == "*") {
 			return true
 		}
 	}
