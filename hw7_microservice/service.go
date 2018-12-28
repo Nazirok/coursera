@@ -25,7 +25,8 @@ type (
 	}
 
 	AdminService struct {
-		logChan chan *Event
+		logID      int
+		logStreams map[int]chan *Event
 	}
 
 	BizService struct {
@@ -34,9 +35,11 @@ type (
 
 func NewMicroService(acl map[string][]string) *MicroService {
 	return &MicroService{
-		acl:   acl,
-		admin: &AdminService{logChan: make(chan *Event, 100)},
-		biz:   &BizService{},
+		acl: acl,
+		admin: &AdminService{
+			logStreams: make(map[int]chan *Event),
+		},
+		biz: &BizService{},
 	}
 }
 
@@ -97,11 +100,22 @@ func (m *MicroService) authorize(ctx context.Context, method string) (*Event, er
 	}, nil
 }
 
+func (a *AdminService) addLogChan() {
+	a.logID++
+	a.logStreams[a.logID] = make(chan *Event, 100)
+}
+
+func (a *AdminService) getLastLogStream() chan *Event {
+	return a.logStreams[a.logID]
+}
+
 func (a *AdminService) writeLog(e *Event) {
-	select {
-	case a.logChan <- e:
-	default:
-		return
+	for _, v := range a.logStreams {
+		select {
+		case v <- e:
+		default:
+			return
+		}
 	}
 }
 
@@ -133,10 +147,10 @@ func StartMyMicroservice(ctx context.Context, conn string, acl string) error {
 }
 
 func (a *AdminService) Logging(n *Nothing, out Admin_LoggingServer) error {
-	for e := range a.logChan {
+	a.addLogChan()
+	for e := range a.getLastLogStream() {
 		err := out.Send(e)
 		if err == io.EOF {
-			fmt.Println("exit EOF")
 			return nil
 		}
 		if err != nil {
