@@ -24,7 +24,7 @@ const (
 	// кого по каким методам пускать
 	ACLData string = `{
 	"logger":    ["/main.Admin/Logging"],
-	"stat":      ["/main.Admin/Statistics"],
+	"stats":      ["/main.Admin/Statistics"],
 	"biz_user":  ["/main.Biz/Check", "/main.Biz/Add"],
 	"biz_admin": ["/main.Biz/*"]
 }`
@@ -292,9 +292,9 @@ func TestStat(t *testing.T) {
 	biz := NewBizClient(conn)
 	adm := NewAdminClient(conn)
 
-	statStream1, err := adm.Statistics(getConsumerCtx("stat"), &StatInterval{IntervalSeconds: 2})
+	statStream1, err := adm.Statistics(getConsumerCtx("stats"), &StatInterval{IntervalSeconds: 2})
 	wait(1)
-	statStream2, err := adm.Statistics(getConsumerCtx("stat"), &StatInterval{IntervalSeconds: 3})
+	statStream2, err := adm.Statistics(getConsumerCtx("stats"), &StatInterval{IntervalSeconds: 3})
 
 	mu := &sync.Mutex{}
 	stat1 := &Stat{}
@@ -311,7 +311,7 @@ func TestStat(t *testing.T) {
 			} else if err == io.EOF {
 				break
 			}
-			// log.Println("stat1", stat, err)
+			// log.Println("stat1", stats, err)
 			mu.Lock()
 			stat1 = stat
 			stat1.Timestamp = 0
@@ -327,7 +327,7 @@ func TestStat(t *testing.T) {
 			} else if err == io.EOF {
 				break
 			}
-			// log.Println("stat2", stat, err)
+			// log.Println("stat2", stats, err)
 			mu.Lock()
 			stat2 = stat
 			stat2.Timestamp = 0
@@ -354,7 +354,7 @@ func TestStat(t *testing.T) {
 		ByConsumer: map[string]uint64{
 			"biz_user":  2,
 			"biz_admin": 1,
-			"stat":      1,
+			"stats":      1,
 		},
 	}
 

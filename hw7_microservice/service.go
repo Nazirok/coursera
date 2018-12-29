@@ -13,6 +13,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"time"
 )
 
 // тут вы пишете код
@@ -26,12 +27,11 @@ type (
 	}
 
 	AdminService struct {
-		sync.Mutex
-		logID       int
-		statID      int
-		logStreams  map[int]chan *Event
-		statStreams map[int]chan *Stat
-		stat        *Stat
+		sync.RWMutex
+		logID      int
+		statID     int
+		logStreams map[int]chan *Event
+		stats      map[int]*Stat
 	}
 
 	BizService struct {
@@ -42,12 +42,12 @@ func NewMicroService(acl map[string][]string) *MicroService {
 	return &MicroService{
 		acl: acl,
 		admin: &AdminService{
-			logStreams:  make(map[int]chan *Event),
-			statStreams: make(map[int]chan *Stat),
-			stat: &Stat{
-				ByMethod:   make(map[string]uint64),
-				ByConsumer: make(map[string]uint64),
-			},
+			logStreams: make(map[int]chan *Event),
+			stats:      make(map[int]*Stat),
+			// stats: &Stat{
+			// 	ByMethod:   make(map[string]uint64),
+			// 	ByConsumer: make(map[string]uint64),
+			// },
 		},
 		biz: &BizService{},
 	}
@@ -67,10 +67,13 @@ func (m *MicroService) authInterceptor(
 	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler,
 ) (interface{}, error) {
-	e, err := m.authorize(ctx, info.FullMethod)
+	md, _ := metadata.FromIncomingContext(ctx)
+	consumer := md.Get("consumer")
+	e, err := m.authorize(consumer, info.FullMethod)
 	if err != nil {
 		return nil, err
 	}
+	m.admin.addStat(consumer[0], info.FullMethod)
 	m.admin.writeLog(e)
 	return handler(ctx, req)
 }
@@ -81,17 +84,18 @@ func (m *MicroService) streamAuthInterceptor(
 	info *grpc.StreamServerInfo,
 	handler grpc.StreamHandler,
 ) error {
-	e, err := m.authorize(ss.Context(), info.FullMethod)
+	md, _ := metadata.FromIncomingContext(ss.Context())
+	consumer := md.Get("consumer")
+	e, err := m.authorize(consumer, info.FullMethod)
 	if err != nil {
 		return err
 	}
+	m.admin.addStat(consumer[0], info.FullMethod)
 	m.admin.writeLog(e)
 	return handler(srv, ss)
 }
 
-func (m *MicroService) authorize(ctx context.Context, method string) (*Event, error) {
-	md, _ := metadata.FromIncomingContext(ctx)
-	consumer := md.Get("consumer")
+func (m *MicroService) authorize(consumer []string, method string) (*Event, error) {
 	if len(consumer) == 0 {
 		return nil, status.Error(codes.Unauthenticated, "consumer not found")
 	}
@@ -130,10 +134,13 @@ func (a *AdminService) writeLog(e *Event) {
 }
 
 func (a AdminService) addStat(consumer, method string) {
-	a.Lock()
-	defer a.Unlock()
-	a.stat.ByConsumer[consumer]++
-	a.stat.ByMethod[method]++
+	for _, v := range a.stats {
+		a.RLock()
+		v.ByConsumer[consumer]++
+		v.ByMethod[method]++
+		a.RUnlock()
+	}
+
 }
 
 func StartMyMicroservice(ctx context.Context, conn string, acl string) error {
@@ -178,6 +185,21 @@ func (a *AdminService) Logging(n *Nothing, out Admin_LoggingServer) error {
 }
 
 func (a *AdminService) Statistics(interval *StatInterval, out Admin_StatisticsServer) error {
+	fmt.Println(out.Context())
+	ticker := time.NewTicker(time.Duration(interval.IntervalSeconds) * time.Second)
+	select {
+	case <- ticker.C:
+		err := out.Send(a.stats)
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	case <- out.Context().Done():
+		ticker.Stop()
+		return nil
+	}
 	return nil
 }
 
