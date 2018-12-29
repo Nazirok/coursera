@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 	"io"
 	"strings"
+	"sync"
 )
 
 // тут вы пишете код
@@ -25,8 +26,12 @@ type (
 	}
 
 	AdminService struct {
-		logID      int
-		logStreams map[int]chan *Event
+		sync.Mutex
+		logID       int
+		statID      int
+		logStreams  map[int]chan *Event
+		statStreams map[int]chan *Stat
+		stat        *Stat
 	}
 
 	BizService struct {
@@ -37,7 +42,12 @@ func NewMicroService(acl map[string][]string) *MicroService {
 	return &MicroService{
 		acl: acl,
 		admin: &AdminService{
-			logStreams: make(map[int]chan *Event),
+			logStreams:  make(map[int]chan *Event),
+			statStreams: make(map[int]chan *Stat),
+			stat: &Stat{
+				ByMethod:   make(map[string]uint64),
+				ByConsumer: make(map[string]uint64),
+			},
 		},
 		biz: &BizService{},
 	}
@@ -117,6 +127,13 @@ func (a *AdminService) writeLog(e *Event) {
 			return
 		}
 	}
+}
+
+func (a AdminService) addStat(consumer, method string) {
+	a.Lock()
+	defer a.Unlock()
+	a.stat.ByConsumer[consumer]++
+	a.stat.ByMethod[method]++
 }
 
 func StartMyMicroservice(ctx context.Context, conn string, acl string) error {
