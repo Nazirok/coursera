@@ -31,7 +31,7 @@ type (
 	}
 
 	AdminService struct {
-		sync.Mutex
+		mu *sync.Mutex
 		statID     int
 		logStreams []chan *Event
 		stats      map[int]*Stat
@@ -45,6 +45,7 @@ func NewMicroService(acl map[string][]string) *MicroService {
 	return &MicroService{
 		acl: acl,
 		admin: &AdminService{
+			mu: &sync.Mutex{},
 			logStreams: make([]chan *Event, 0),
 			stats:      make(map[int]*Stat),
 		},
@@ -72,7 +73,9 @@ func (m *MicroService) authInterceptor(
 	if err != nil {
 		return nil, err
 	}
+	m.admin.mu.Lock()
 	m.admin.addStat(consumer[0], info.FullMethod)
+	m.admin.mu.Unlock()
 	m.admin.writeLog(e)
 	return handler(ctx, req)
 }
@@ -89,7 +92,9 @@ func (m *MicroService) streamAuthInterceptor(
 	if err != nil {
 		return err
 	}
+	m.admin.mu.Lock()
 	m.admin.addStat(consumer[0], info.FullMethod)
+	m.admin.mu.Unlock()
 	m.admin.writeLog(e)
 	return handler(srv, ss)
 }
@@ -114,16 +119,16 @@ func (m *MicroService) authorize(consumer []string, method string) (*Event, erro
 }
 
 func (a *AdminService) addLogChan() chan *Event {
-	a.Lock()
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	c := make(chan *Event, 100)
 	a.logStreams = append(a.logStreams, c)
-	a.Unlock()
 	return c
 }
 
 func (a *AdminService) addStatMap() int {
-	a.Lock()
-	defer a.Unlock()
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.stats[a.statID] = &Stat{
 		ByConsumer: make(map[string]uint64),
 		ByMethod:   make(map[string]uint64),
@@ -133,13 +138,13 @@ func (a *AdminService) addStatMap() int {
 	return temp
 }
 
-func (a *AdminService) addNewStat(key int) {
-	a.Lock()
+func (a *AdminService) updateStatByKey(key int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.stats[key] = &Stat{
 		ByConsumer: make(map[string]uint64),
 		ByMethod:   make(map[string]uint64),
 	}
-	a.Unlock()
 }
 
 func (a *AdminService) writeLog(e *Event) {
@@ -154,10 +159,8 @@ func (a *AdminService) writeLog(e *Event) {
 
 func (a AdminService) addStat(consumer, method string) {
 	for _, v := range a.stats {
-		a.Lock()
 		v.ByConsumer[consumer]++
 		v.ByMethod[method]++
-		a.Unlock()
 	}
 
 }
@@ -215,14 +218,16 @@ func (a *AdminService) Statistics(interval *StatInterval, out Admin_StatisticsSe
 	for {
 		select {
 		case <-ticker.C:
+			a.mu.Lock()
 			err := out.Send(a.stats[key])
+			a.mu.Unlock()
 			if err == io.EOF {
 				return nil
 			}
 			if err != nil {
 				return err
 			}
-			a.addNewStat(key)
+			a.updateStatByKey(key)
 		case <-out.Context().Done():
 			ticker.Stop()
 			return nil
