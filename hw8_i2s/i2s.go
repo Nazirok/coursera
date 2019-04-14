@@ -1,29 +1,41 @@
 package main
 
 import (
-	"fmt"
 	"reflect"
 )
 
 func i2s(data interface{}, out interface{}) error {
-	dv := reflect.ValueOf(data)
-	//fmt.Println(dv)
-	//fmt.Println(reflect.TypeOf(data).Kind())
-	switch dv.Kind() {
+	vd := reflect.ValueOf(data)
+	vo := reflect.ValueOf(out)
+	if vo.Kind() == reflect.Ptr {
+		vo = vo.Elem()
+	}
+	switch vd.Kind() {
 	case reflect.Map:
-		ov := reflect.ValueOf(out)
-		fmt.Println(ov)
-		fmt.Println(ov.Kind())
-		if ov.Kind() == reflect.Ptr {
-			fmt.Println(ov.Elem().)
-			//for i := 0; i < ov.NumField(); i++ {
-			//	valueField := ov.Field(i)
-			//	fmt.Println(valueField.String())
-			//}
+		for _, key := range vd.MapKeys() {
+			fo := vo.FieldByName(key.String())
+			if fo.IsValid() {
+				if fo.CanSet() {
+					vdKeyV := vd.MapIndex(key).Elem()
+					switch vdKeyV.Kind() {
+					case reflect.Float64:
+						if fo.Kind() == reflect.Int {
+							fo.SetInt(int64(vdKeyV.Float()))
+						}
+					case reflect.String:
+						if fo.Kind() == reflect.String {
+							fo.SetString(vdKeyV.String())
+						}
+					case reflect.Bool:
+						if fo.Kind() == reflect.Bool {
+							fo.SetBool(vdKeyV.Bool())
+						}
+					}
+				}
+			}
+
 		}
-		//for _, k := range dv.MapKeys() {
-		//	fmt.Println(k, " ", dv.MapIndex(k))
-		//}
+
 	}
 	return nil
 }
