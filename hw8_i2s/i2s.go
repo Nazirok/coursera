@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"reflect"
 )
 
@@ -30,6 +31,12 @@ func i2s(data interface{}, out interface{}) error {
 						if fo.Kind() == reflect.Bool {
 							fo.SetBool(vdKeyV.Bool())
 						}
+					case reflect.Slice:
+						fmt.Println(vdKeyV.String())
+					case reflect.Struct:
+						fmt.Println(vdKeyV.String())
+					default:
+						fmt.Println(vdKeyV.Kind())
 					}
 				}
 			}
