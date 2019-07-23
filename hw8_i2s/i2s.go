@@ -1,8 +1,8 @@
 package main
 
 import (
-	"errors"
 	"fmt"
+	"errors"
 	"reflect"
 )
 
@@ -47,6 +47,12 @@ func setStructField(mv, sv reflect.Value) error {
 		if sv.Kind() == reflect.Bool {
 			sv.SetBool(mv.Bool())
 		}
+	case reflect.Slice:
+		fmt.Println(mv.String())
+	case reflect.Struct:
+		fmt.Println(mv.String())
+	default:
+		fmt.Println(mv.Kind())
 
 	}
 	return nil
