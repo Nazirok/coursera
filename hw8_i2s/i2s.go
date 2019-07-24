@@ -11,49 +11,49 @@ func i2s(data interface{}, out interface{}) error {
 	vo := reflect.ValueOf(out)
 	if vo.Kind() == reflect.Ptr {
 		vo = vo.Elem()
-		fmt.Println(vo.Kind())
 	}
-	switch vd.Kind() {
-	case reflect.Map:
-		for _, key := range vd.MapKeys() {
-			fo := vo.FieldByName(key.String())
-			vdKeyV := vd.MapIndex(key).Elem()
-			if err := setStructField(vdKeyV, fo); err != nil {
-				return err
-			}
-		}
-
+	if err := set(vd, vo); err != nil {
+		return err
 	}
 	return nil
 }
 
-func setStructField(mv, sv reflect.Value) error {
+
+func set(mv, sv reflect.Value) error {
 	if !sv.IsValid() {
 		return errors.New("no such field")
 	}
 	if !sv.CanSet() {
 		return errors.New("can`t set field")
 	}
-	switch mv.Kind() {
-	case reflect.Float64:
-		if sv.Kind() == reflect.Int {
+	switch sv.Kind() {
+	case reflect.Int:
+		switch mv.Kind() {
+		case reflect.Int:
+			sv.SetInt(mv.Int())
+		case reflect.Float64:
 			sv.SetInt(int64(mv.Float()))
 		}
 	case reflect.String:
-		if sv.Kind() == reflect.String {
-			sv.SetString(mv.String())
-		}
+		sv.SetString(mv.String())
 	case reflect.Bool:
-		if sv.Kind() == reflect.Bool {
-			sv.SetBool(mv.Bool())
-		}
+		sv.SetBool(mv.Bool())
 	case reflect.Slice:
 		fmt.Println(mv.String())
 	case reflect.Struct:
-		fmt.Println(mv.String())
+		switch mv.Kind() {
+		case reflect.Map:
+			for _, key := range mv.MapKeys() {
+				ssv := sv.FieldByName(key.String())
+				mmv := mv.MapIndex(key).Elem()
+				if err := set(mmv, ssv); err != nil {
+					return err
+				}
+			}
+		}
+		fmt.Println("sdfsdf",sv.String())
+		fmt.Println(sv.CanSet())
 	default:
-		fmt.Println(mv.Kind())
-
 	}
 	return nil
 }
