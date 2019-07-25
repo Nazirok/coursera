@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"reflect"
 )
 
@@ -20,7 +19,7 @@ func set(mv, sv reflect.Value) error {
 		return errors.New("no such field")
 	}
 	switch sv.Kind() {
-	case reflect.Ptr:
+	case reflect.Ptr, reflect.Interface:
 		if err := set(mv, sv.Elem()); err != nil {
 			return err
 		}
@@ -36,18 +35,15 @@ func set(mv, sv reflect.Value) error {
 	case reflect.Bool:
 		sv.SetBool(mv.Bool())
 	case reflect.Slice:
-		fmt.Println("TYPE:", mv.Kind())
-		for i := 0; i < mv.Len(); i++ {
-			fmt.Println(mv.Index(i).Kind())
-			fmt.Println(mv.Type().String())
+		slice := reflect.MakeSlice(sv.Type(), mv.Len(), mv.Len())
+		if mv.Kind() == reflect.Slice {
+			for i := 0; i < mv.Len(); i++ {
+				if err := set(mv.Index(i).Elem(), slice.Index(i)); err != nil {
+					return err
+				}
+			}
 		}
-		//for i := 0; i < sv.Len(); i++ {
-		//	//fmt.Println(mv.Index(i).Kind())
-		//	fmt.Println(mv.Type().String())
-		//	//if err := set(mv.Index(i), sv.Index(i)); err != nil {
-		//	//	return err
-		//	//}
-		//}
+		sv.Set(slice)
 	case reflect.Struct:
 		switch mv.Kind() {
 		case reflect.Map:
